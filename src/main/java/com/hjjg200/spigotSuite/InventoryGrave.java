@@ -28,7 +28,7 @@ import org.bukkit.entity.Player;
 
 public final class InventoryGrave implements Module, Listener {
 
-    public final static String NAME = "InventoryGrave";
+    public final static String NAME = InventoryGrave.class.getSimpleName();
     private final static int MAX_CHEST_SLOTS = InventoryType.CHEST.getDefaultSize();
     private final static int SEARCH_RADIUS = 9;
 
@@ -41,11 +41,13 @@ public final class InventoryGrave implements Module, Listener {
     }
 
     public final void enable() {
+        ss.LOGGER.info("Enabling " + NAME);
+        // Configuration
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
         keptSlots = config.getIntegerList("keptSlots");
         assert keptSlots.size() <= MAX_CHEST_SLOTS : "Kept items must fit into a chest";
         datePatterns = config.getStringList("datePatterns");
-
+        // Register events
         ss.getServer().getPluginManager().registerEvents(this, ss);
     }
 
@@ -90,7 +92,7 @@ public final class InventoryGrave implements Module, Listener {
         c.update(true);
 
         // Make sign
-        sBlk.setType(Material.WARPED_SIGN);
+        sBlk.setType(Material.CRIMSON_SIGN);
         final Sign s = (Sign)sBlk.getState();
         final Rotatable sData = (Rotatable)s.getBlockData();
         // * Set Facing
@@ -112,6 +114,8 @@ public final class InventoryGrave implements Module, Listener {
             }
             s.setLine(i++, toBold(line));
         }
+        // * Update
+        s.update(true);
 
     }
 
