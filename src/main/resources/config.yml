@@ -1,0 +1,29 @@
+
+# InventoryGrave config
+
+InventoryGrave:
+
+    # The sign's 3rd and 4th lines will be date formatted as below
+    # Refer to DateTimeFormatter javadoc for patterns
+
+    datePatterns:
+        - 'MMM d, uuuu'
+        - 'h:mm a'
+
+    # Default preserved slots are quick slots, armors, and off-hand
+
+    keptSlots:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 36
+        - 37
+        - 38
+        - 39
+        - 40

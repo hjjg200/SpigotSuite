@@ -1,0 +1,4 @@
+name: SpigotSuite
+main: com.hjjg200.spigotSuite.SpigotSuite
+version: 0.1
+api-version: 1.16
