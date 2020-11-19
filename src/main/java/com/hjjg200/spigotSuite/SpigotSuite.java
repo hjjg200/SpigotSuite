@@ -12,7 +12,6 @@ import com.hjjg200.spigotSuite.StopWhenEmpty;
 public final class SpigotSuite extends JavaPlugin {
 
     private static final String NAME = SpigotSuite.class.getSimpleName();
-
     private final ArrayList<Module> modules = new ArrayList<Module>();
 
     public SpigotSuite() {

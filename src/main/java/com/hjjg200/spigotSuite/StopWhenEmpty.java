@@ -77,6 +77,7 @@ public final class StopWhenEmpty implements Module, Listener {
     }
 
     @EventHandler
+<<<<<<< HEAD
     public void onServerLoad(ServerLoadEvent e) {
         // Schedule shutdown if there are no players
         if(getPlayerCount() == 0) scheduleShutdown();
