@@ -88,6 +88,7 @@ public final class DiscordPlugin implements Plugin {
 
     public void disable() {
         jda.shutdown();
+        jda = null;
     }
 
     public final void subscribeEvent(final Consumer<IEvent> listener) {
