@@ -1,29 +1,49 @@
 
 # InventoryGrave config
-
 InventoryGrave:
 
     # The sign's 3rd and 4th lines will be date formatted as below
     # Refer to DateTimeFormatter javadoc for patterns
-
     datePatterns:
-        - 'MMM d, uuuu'
-        - 'h:mm a'
+        - 'MMM d, uuuu' # 3rd line
+        - 'h:mm a' # 4th line
 
     # Default preserved slots are quick slots, armors, and off-hand
-
     keptSlots:
-        - 0
-        - 1
-        - 2
-        - 3
-        - 4
-        - 5
-        - 6
-        - 7
-        - 8
-        - 36
-        - 37
-        - 38
-        - 39
-        - 40
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 36, 37, 38, 39, 40]
+
+# StopWhenEmpty configuration
+StopWhenEmpty:
+
+    # In how many minutes a server will shut down since it had 0 players
+    #
+    # Unit: minutes
+    # Default: 20
+    wait: 20
+
+    # If you want to make sure the server shutdown does not hang and
+    # the script is run afterwards, set this value above 0.
+    # The plugin will have the JVM halt after N minutes since
+    # its disabling
+    #
+    # Be generous about the amount, since Runtime.halt will forcibly
+    # terminate the JVM and its threads
+    #
+    # Unit: minutes
+    # Default: 0
+    emergencyThreshold: 0
+
+    # Arguments that will be run when the JVM is shut down
+    scriptArgs:
+        - 'bash'
+        - '-c'
+        - 'echo hello'
+
+# ChatBridge configuration
+ChatBridge:
+
+    # Specify the plugin to use for ChatBridge
+    # Available plugins: [none, discord]
+    #
+    # Default: none
+    plugin: none

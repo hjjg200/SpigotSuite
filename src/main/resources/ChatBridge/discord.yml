@@ -1,0 +1,15 @@
+
+# Bot token of the Discord bot
+botToken: ''
+
+# Channel to send to and receive messages from
+# This must be an unsigned value
+#
+# Type: snowflake
+channelId: ''
+
+# Admin user id who will receive important logs
+# Not an unsigned value makes admin alerts disabled
+#
+# Type: snowflake
+adminId: ''
