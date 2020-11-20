@@ -33,6 +33,7 @@ public final class ChatBridge implements Listener, Module {
         // Configuration
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
         final String plName = config.getString("plugin");
+        if(plName.equals("none")) return;
         final File dataFolder = new File(ss.getDataFolder(), NAME);
         dataFolder.mkdirs();
         // * Plugin
@@ -53,8 +54,6 @@ public final class ChatBridge implements Listener, Module {
         case "discord":
             plugin = new DiscordPlugin(plConfig);
             break;
-        case "none":
-            return;
         default:
             ss.getLogger().severe("Attempt to use unknown chat plugin");
             return;
@@ -68,7 +67,7 @@ public final class ChatBridge implements Listener, Module {
     }
 
     public final void disable() {
-        plugin.disable();
+        if(plugin != null) plugin.disable();
     }
 
     public final String getName() {
