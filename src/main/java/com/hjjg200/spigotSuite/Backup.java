@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.logging.Level;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Semaphore;
 import java.util.function.Predicate;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
 
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -43,23 +44,15 @@ public final class Backup implements Module, Listener {
     private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss");
     private final static long TICK_SECOND = 20L;
     private final static String UTF_8 = "UTF-8";
-    private final static String CONTENT_TYPE = "Content-Type";
+    private final static Semaphore MUTEX = new Semaphore(1);
     private final SpigotSuite ss;
     private final BukkitScheduler scheduler;
-    private final ReentrantLock mutex = new ReentrantLock();
-    private final Thread hook = new Thread(){
-        @Override
-        public void run() {
-            mutex.lock();
-        }
-    };
     private boolean enabled;
     private long interval;
     private String s3Bucket; // = "my-s3-bucket"
     private Region s3Region; // = "ap-northeast-2"
     private String s3Prefix; // = "/backup/minecraft/"
     private S3Client s3Client;
-    private Timer timer;
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent e) {
@@ -70,7 +63,11 @@ public final class Backup implements Module, Listener {
     private final class BackupTask implements Runnable {
         @Override
         public void run() {
-            mutex.lock();
+            try {
+                MUTEX.acquire();
+            } catch(Exception ex) {
+                ex.printStackTrace();
+            }
             ss.getLogger().info("Starting to backup...");
             final Server server = ss.getServer();
             final CommandSender cs = server.getConsoleSender();
@@ -87,6 +84,7 @@ public final class Backup implements Module, Listener {
             try {
                 String time = LocalDateTime.now().format(FORMATTER);
                 // Backup model is incremental
+                // TODO: change to reverse incremental
                 for(final World world : ss.getServer().getWorlds()) {
                     final String name = String.format("%s_%s", world.getName(), world.getUID());
                     final File dataFile = Resource.get(ss, NAME, name + ".yml");
@@ -106,6 +104,7 @@ public final class Backup implements Module, Listener {
                     };
                     final Archive archive = new Archive(world.getWorldFolder(), filter);
                     if(archive.count() > 0) {
+                        ss.getLogger().log(Level.INFO, "Doing backup for {0}", name);
                         final String baseKey = String.format("%s%s/%s", s3Prefix, name, time);
                         final HashMap<String, String> metadata = new HashMap<String, String>();
                         final PutObjectRequest.Builder builder = PutObjectRequest.builder()
@@ -124,6 +123,8 @@ public final class Backup implements Module, Listener {
                             .key(baseKey + ".tar.gz.sha1")
                             .build();
                         final PutObjectResponse sha1Response = s3Client.putObject(sha1Request, RequestBody.fromBytes(new Hex(UTF_8).encode(archive.digest())));
+                    } else {
+                        ss.getLogger().log(Level.INFO, "Nothing to backup for {0}", name);
                     }
                     data.save(dataFile);
                 }
@@ -131,10 +132,9 @@ public final class Backup implements Module, Listener {
             } catch(Exception ex) {
                 ex.printStackTrace();
             } finally {
-                // PostTask must be scheduled prior to mutex unlock
-                scheduler.scheduleSyncDelayedTask(ss, new PostTask(success));
                 // unlock must be done async in order to prevent deadlock
-                mutex.unlock();
+                MUTEX.release();
+                scheduler.scheduleSyncDelayedTask(ss, new PostTask(success));
             }
         }
     }
@@ -143,7 +143,6 @@ public final class Backup implements Module, Listener {
     private final class PostTask implements Runnable {
         private final boolean success;
         public PostTask(final boolean success) {
-            super();
             this.success = success;
         }
         @Override
@@ -158,11 +157,14 @@ public final class Backup implements Module, Listener {
     }
 
     private final void schedule() {
-        // TODO: 10L -> 60L
-        scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), interval * TICK_SECOND * 10L);
+        scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), interval * TICK_SECOND * 60L);
     }
 
     // public final long BackupSize -> entire backup size filtered by prefix
+
+    // public final String[] versions -> list available versions
+
+    // public final void assemble -> 
 
     public Backup(final SpigotSuite ss) {
         this.ss = ss;
@@ -171,19 +173,21 @@ public final class Backup implements Module, Listener {
 
     public final void enable() throws Exception {
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
+        // Java System Properties - aws.accessKeyId and aws.secretKey
+        final FileConfiguration awsCredentials = YamlConfiguration.loadConfiguration(Resource.get(ss, NAME, "awsCredentials.yml"));
+        System.setProperty("aws.accessKeyId", awsCredentials.getString("accessKeyId"));
+        System.setProperty("aws.secretAccessKey", awsCredentials.getString("secretAccessKey"));
+        // Configuration
         enabled = config.getBoolean("enabled");
-        if(!enabled) return;
+        if(!enabled) throw new Module.DisabledException();
         interval = config.getLong("interval");
         assert interval > 0 : "Interval must be above 0";
         s3Region = Region.of(config.getString("s3Region")); // IllegalArgument
         s3Bucket = config.getString("s3Bucket");
         s3Prefix = config.getString("s3Prefix");
-        // Java System Properties - aws.accessKeyId and aws.secretKey
-        final FileConfiguration awsCredentials = YamlConfiguration.loadConfiguration(Resource.get(ss, NAME, "awsCredentials.yml"));
-        System.setProperty("aws.accessKeyId", awsCredentials.getString("accessKeyId"));
-        System.setProperty("aws.secretKey", awsCredentials.getString("secretKey"));
         // Prepare client
         s3Client = S3Client.builder()
+            .credentialsProvider(SystemPropertyCredentialsProvider.create())
             .region(s3Region)
             .build();
         // HeadBucket to check permissions
@@ -201,8 +205,11 @@ public final class Backup implements Module, Listener {
     }
 
     public final void disable() {
-        // TODO: spigotsuite must disable modules that successfully enabled
-        mutex.lock();
+        try {
+            MUTEX.acquire();
+        } catch(Exception ex) {
+            ex.printStackTrace();
+        }
     }
 
     public final String getName() {

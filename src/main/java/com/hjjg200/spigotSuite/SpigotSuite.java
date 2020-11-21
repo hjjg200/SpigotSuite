@@ -1,5 +1,6 @@
 package com.hjjg200.spigotSuite;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -29,15 +30,20 @@ public final class SpigotSuite extends JavaPlugin {
         modules.add(new ChatBridge(this));
         modules.add(new Motd(this));
         modules.add(new Backup(this));
-        for(final Module m : modules) {
+        modules.removeIf(m -> {
+            boolean success = false;
             try {
                 m.enable();
                 getLogger().log(Level.INFO, "Successfully enabled {0}", m.getName());
+                success = true;
+            } catch(Module.DisabledException ex) {
+                getLogger().log(Level.INFO, "Ignored {0}", m.getName());
             } catch(Exception ex) {
-                modules.remove(m);
-                getLogger().log(Level.SEVERE, "Failed to enable {0}\n{1}", new Object[]{m.getName(), ex});
+                getLogger().log(Level.SEVERE, "Failed to enable {0}", m.getName());
+                ex.printStackTrace();
             }
-        }
+            return success;
+        });
     }
 
     @Override
