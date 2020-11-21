@@ -27,6 +27,7 @@ public final class SpigotSuite extends JavaPlugin {
         modules.add(new StopWhenEmpty(this));
         modules.add(new ChatBridge(this));
         modules.add(new Motd(this));
+        modules.add(new Backup(this));
         for(final Module m : modules) m.enable();
     }
 

@@ -66,6 +66,8 @@ Motd:
 # Backup configuration
 Backup:
 
+    enabled: false
+
     # Unit: minute
     interval: 60
 

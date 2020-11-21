@@ -25,11 +25,14 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.event.Listener;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.server.ServerLoadEvent;
 
 import com.hjjg200.spigotSuite.util.Archive;
 import com.hjjg200.spigotSuite.util.Resource;
 
-public final class Backup implements Module {
+public final class Backup implements Module, Listener {
 
     private final static String NAME = Backup.class.getSimpleName();
     private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss");
@@ -42,6 +45,7 @@ public final class Backup implements Module {
             mutex.lock();
         }
     };
+    private boolean enabled;
     private long interval;
     private String s3Bucket; // = "my-s3-bucket"
     private Region s3Region; // = "ap-northeast-2"
@@ -49,10 +53,16 @@ public final class Backup implements Module {
     private File s3Credentials;
     private Timer timer;
 
+    @EventHandler
+    public void onServerLoad(ServerLoadEvent e) {
+        schedule();
+    }
+
     public final class BackupTask extends TimerTask {
         @Override
         public void run() {
             mutex.lock();
+            ss.getLogger().info("Starting to backup...");
             final Server server = ss.getServer();
             final CommandSender cs = server.getConsoleSender();
             server.dispatchCommand(cs, "save-all");
@@ -114,6 +124,7 @@ public final class Backup implements Module {
                 // Schedule next backup
                 schedule();
             }
+            ss.getLogger().info("Backup done");
         }
     }
 
@@ -123,19 +134,22 @@ public final class Backup implements Module {
 
     public final void enable() {
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
+        enabled = config.getBoolean("enabled");
+        if(!enabled) return;
         interval = config.getLong("interval");
         assert interval > 0 : "Interval must be above 0";
         s3Region = Region.of(config.getString("s3Region")); // IllegalArgument
         s3Bucket = config.getString("s3Bucket");
         s3Prefix = config.getString("s3Prefix");
         // Java System Properties - aws.accessKeyId and aws.secretKey
-        final FileConfiguration awsCredentials = YamlConfiguration.loadConfiguration(Resource.get(ss, NAME, "aws_credentials.yml"));
+        final FileConfiguration awsCredentials = YamlConfiguration.loadConfiguration(Resource.get(ss, NAME, "awsCredentials.yml"));
         System.setProperty("aws.accessKeyId", awsCredentials.getString("accessKeyId"));
         System.setProperty("aws.secretKey", awsCredentials.getString("secretKey"));
         Runtime.getRuntime().addShutdownHook(hook);
     }
 
     public final void disable() {
+        if(!enabled) return;
         mutex.lock();
         timer.cancel();
         timer = null;
@@ -149,7 +163,7 @@ public final class Backup implements Module {
 
     private final void schedule() {
         timer = new Timer();
-        timer.schedule(new BackupTask(), interval * 60L * 1000L);
+        timer.schedule(new BackupTask(), interval * 10L * 1000L); //TODO: 10 -> 60
     }
 
 }
