@@ -21,7 +21,10 @@ tasks.withType(JavaCompile) {
 }
 */
 dependencies {
-    implementation "software.amazon.awssdk:bom:2.15.33"
+    implementation platform("software.amazon.awssdk:bom:2.15.33")
+    implementation "software.amazon.awssdk:sdk-core"
+    implementation "software.amazon.awssdk:s3"
+    implementation "software.amazon.awssdk:regions"
     implementation "org.apache.commons:commons-compress:1.20"
     implementation "commons-codec:commons-codec:1.15"
     implementation "net.dv8tion:JDA:4.2.0_168"

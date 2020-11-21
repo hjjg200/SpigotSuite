@@ -19,7 +19,7 @@ public final class Resource {
                 : new File(elements[i]);
             if(i == elements.length - 2) resource.mkdirs();
         }
-        plugin.saveResource(resource.getPath(), false);
+        if(plugin.getResource(resource.getPath()) != null) plugin.saveResource(resource.getPath(), false);
         return resource;
     }
 

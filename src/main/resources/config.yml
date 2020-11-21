@@ -62,3 +62,17 @@ Motd:
 
     # Motd message shown after load completion
     postLoad: "Server is up and running!"
+
+# Backup configuration
+Backup:
+
+    # Unit: minute
+    interval: 60
+
+    s3Region: ''
+
+    s3Bucket: ''
+
+    s3Prefix: ''
+
+    # Aws credentials file is at Backup/awsCredentials.yml

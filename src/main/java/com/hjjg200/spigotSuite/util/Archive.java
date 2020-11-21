@@ -20,6 +20,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 public final class Archive {
 
     private long _count = 0;
+    private long _size = 0;
     private final DigestInputStream sha1;
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final TarArchiveOutputStream tar = new TarArchiveOutputStream(new GzipCompressorOutputStream(new BufferedOutputStream(out)));
@@ -27,17 +28,21 @@ public final class Archive {
         if(filter == null) filter = i -> true;
         put(file, filter);
         tar.close();
+        _size = out.size();
         sha1 = new DigestInputStream(new BufferedInputStream(new ByteArrayInputStream(out.toByteArray())), DigestUtils.getSha1Digest());
     }
     public final InputStream inputStream() {
         return sha1;
     }
-    public final byte[] digest() {
-        if(sha1.available() > 0) throw IOException("InputStream must be read entirely before digest evaluation");
+    public final byte[] digest() throws IOException {
+        if(sha1.available() > 0) throw new IOException("InputStream must be read entirely before digest evaluation");
         return sha1.getMessageDigest().digest();
     }
     public final long count() {
         return _count;
+    }
+    public final long size() {
+        return _size;
     }
 
     private final void put(final File file, final Predicate<File> filter) throws IOException {
