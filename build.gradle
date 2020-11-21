@@ -1,7 +1,6 @@
 
 plugins {
     id 'java'
-    id 'java-library'
     id 'com.github.johnrengelman.shadow' version '6.1.0'
 }
 
@@ -22,13 +21,17 @@ tasks.withType(JavaCompile) {
 }
 */
 dependencies {
-    api "net.dv8tion:JDA:4.2.0_168"
+    implementation "software.amazon.awssdk:bom:2.15.33"
+    implementation "org.apache.commons:commons-compress:1.20"
+    implementation "commons-codec:commons-codec:1.15"
+    implementation "net.dv8tion:JDA:4.2.0_168"
     compileOnly 'org.spigotmc:spigot-api:1.16.4-R0.1-SNAPSHOT'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.3.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.3.1'
 }
 
 shadowJar {
+    minimize()
 }
 
 test {
