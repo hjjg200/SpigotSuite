@@ -19,6 +19,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 
 public final class Archive {
 
+    private long _count = 0;
     private final DigestInputStream sha1;
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final TarArchiveOutputStream tar = new TarArchiveOutputStream(new GzipCompressorOutputStream(new BufferedOutputStream(out)));
@@ -32,7 +33,11 @@ public final class Archive {
         return sha1;
     }
     public final byte[] digest() {
+        if(sha1.available() > 0) throw IOException("InputStream must be read entirely before digest evaluation");
         return sha1.getMessageDigest().digest();
+    }
+    public final long count() {
+        return _count;
     }
 
     private final void put(final File file, final Predicate<File> filter) throws IOException {
@@ -43,6 +48,7 @@ public final class Archive {
             tar.putArchiveEntry(new TarArchiveEntry(file));
             Files.copy(file.toPath(), tar);
             tar.closeArchiveEntry();
+            _count++;
         }
     }
 
