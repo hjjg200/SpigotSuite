@@ -2,12 +2,14 @@ package com.hjjg200.spigotSuite;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.logging.Level;
 import java.util.concurrent.Semaphore;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -16,6 +18,8 @@ import org.apache.commons.codec.binary.Hex;
 
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -23,6 +27,7 @@ import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -116,20 +121,18 @@ public final class Backup implements Module, Listener {
                 final String indexName = INDEX + YML;
                 final File indexFile = new File(worldTempDir, indexName);
                 final GetObjectRequest indexRequest = getObjectBuilder
-                    .key(formatKey(indexName))
+                    .key(formatKey.apply(indexName))
                     .build();
-                final GetObjectResponse indexResponse = s3Client.getObject(indexRequest, indexFile.toPath());
-                final YamlConfiguration index = new YamlConfiguration();
-                if(indexInputStream.response().isSuccessful()) {
-                    index.loadConfiguration(indexFile);
-                } else if(indexInputStream.response().statusCode() != 404) {
-                    throw new Exception("Index file foe " + name + " could not be accessed");
+                YamlConfiguration index = new YamlConfiguration();
+                try {
+                    s3Client.getObject(indexRequest, indexFile.toPath());
+                    index = YamlConfiguration.loadConfiguration(indexFile);
+                } catch(NoSuchKeyException ex) {
+                } catch(Exception ex) {
+                    throw ex;
                 }
                 // Versions
                 List<String> versions = index.getStringList(VERSIONS);
-                if(versions == null) {
-                    versions = new ArrayList<String>();
-                }
                 // Cache last modified time
                 final YamlConfiguration lastMods = new YamlConfiguration();
                 Files.walk(world.getWorldFolder().toPath())
@@ -137,75 +140,73 @@ public final class Backup implements Module, Listener {
                     .filter(file -> file.isFile())
                     .forEach(file -> lastMods.set(file.getPath(), file.lastModified()));
                 // Head version
-                if(initial == false) {
+                if(versions.size() > 0) {
                     // Preserve only those that did not change
                     try {
                         final String headVersion = versions.get(versions.size() - 1);
+                        final File headDir = new File(worldTempDir, HEAD);
+                        headDir.mkdirs();
                         // Head sha1
                         final String headSha1Name = HEAD + TAR_GZ + SHA1;
                         final GetObjectRequest headSha1Request = getObjectBuilder
-                            .key(formatKey(headSha1Name))
+                            .key(formatKey.apply(headSha1Name))
                             .build();
                         final GetObjectResponse headSha1Response = s3Client.getObject(
                             headSha1Request,
-                            new File(worldTempDir, headSha1Name).toPath());
-                        assert headSha1Response.isSuccessful() : "The head version is not accessible or damaged";
+                            new File(headDir, headSha1Name).toPath());
+                        assert headSha1Response.sdkHttpResponse().isSuccessful() : "The head version is not accessible or damaged";
                         // Head archive
                         final String headArchiveName = HEAD + TAR_GZ;
                         final GetObjectRequest headArchiveRequest = getObjectBuilder
-                            .key(formatKey(headArchiveName))
+                            .key(formatKey.apply(headArchiveName))
                             .build();
-                        final File headArchiveFile = new File(worldTempDir, headArchiveName);
+                        final Archive headArchive = new Archive(headDir, headArchiveName);
                         final GetObjectResponse headArchiveResponse = s3Client.getObject(
                             headArchiveRequest,
-                            headArchiveFile.toPath());
-                        assert headArchiveResponse.isSuccessful() : "The head archive is not accessible";
+                            headArchive.toPath());
+                        assert headArchiveResponse.sdkHttpResponse().isSuccessful() : "The head archive is not accessible";
                         // * Decompress head archive
-                        final File headDir = new File(worldTempDir, HEAD);
-                        headDir.mkdirs();
-                        Archive.decompress(headArchiveFile, headDir);
+                        headArchive.decompress();
                         // * Delete old head archive
-                        headArchiveFile.delete();
+                        headArchive.delete();
                         // Head last modified times
                         final GetObjectRequest headLastModsRequest = getObjectBuilder
-                            .key(formatKey(HEAD + YML))
+                            .key(formatKey.apply(HEAD + YML))
                             .build();
-                        final File headLastModsFile = new File(worldTempDir, HEAD + YML);
+                        final File headLastModsFile = new File(headDir, HEAD + YML);
                         final GetObjectResponse headLastModsResponse = s3Client.getObject(headLastModsRequest, headLastModsFile.toPath());
-                        assert headLastModsResponse.isSuccessful() : "The head last modified times are not accessible";
+                        assert headLastModsResponse.sdkHttpResponse().isSuccessful() : "The head last modified times are not accessible";
                         final YamlConfiguration headLastMods = YamlConfiguration.loadConfiguration(headLastModsFile);
-                        // * Decompress the archive
                         // * Archive again -- changed files only
                         final String diffArchiveName = headVersion + TAR_GZ;
-                        final File diffArchiveFile = new File(worldTempDir, diffArchiveName);
-                        final Archive diffArchive = new Archive(
-                            new File(headArchiveDir, world.getName()),
-                            diffArchiveFile,
+                        final Archive diffArchive = Archive.compress(
+                            new File(headDir, world.getName()),
+                            new File(worldTempDir, diffArchiveName),
                             file -> lastMods.getLong(file.getPath()) != headLastMods.getLong(file.getPath()));
+                        System.out.println(diffArchive.count());
                         if(diffArchive.count() > 0) {
                             // Put archive
                             final PutObjectRequest diffArchiveRequest = putObjectBuilder
-                                .key(formatKey(headVersion + TAR_GZ))
+                                .key(formatKey.apply(diffArchiveName))
                                 .contentType(APP_GZ)
                                 .build();
-                            final PutObjectResponse diffArchiveResponse = s3Client.putObject(diffArchiveRequest, diffArchiveFile.toPath());
-                            assert diffArchiveResponse.isSuccessful() : "Could not put diff archive to the bucket";
+                            final PutObjectResponse diffArchiveResponse = s3Client.putObject(diffArchiveRequest, diffArchive.toPath());
+                            assert diffArchiveResponse.sdkHttpResponse().isSuccessful() : "Could not put diff archive to the bucket";
                             // Put sha1
+                            final File diffSha1File = new File(diffArchive.getPath() + SHA1);
                             final PutObjectRequest diffSha1Request = putObjectBuilder
-                                .key(formatKey(headVersion + TAR_GZ + SHA1))
+                                .key(formatKey.apply(diffArchiveName + SHA1))
                                 .contentType(TXT_PL)
                                 .build();
-                            final PutObjectResponse diffSha1Response = s3Client.putObject(
-                                diffSha1Request,
-                                RequestBody.fromBytes(new Hex(UTF_8).encode(diffArchive.digest())));
-                            assert diffSha1Response.isSuccessful() : "Could not put diff sha1 to the bucket";
+                            final PutObjectResponse diffSha1Response = s3Client.putObject( diffSha1Request, diffSha1File.toPath());
+                            assert diffSha1Response.sdkHttpResponse().isSuccessful() : "Could not put diff sha1 to the bucket";
                             // Put last mods
                             final PutObjectRequest diffLastModsRequest = putObjectBuilder
-                                .key(formatKey(headVersion + YML))
+                                .key(formatKey.apply(headVersion + YML))
                                 .contentType(APP_YML)
                                 .build();
                             final PutObjectResponse diffLastModsResponse = s3Client.putObject(diffLastModsRequest, headLastModsFile.toPath());
-                            assert diffLastModsResponse.isSuccessful() : "Coult not put diff last modified times to the bucket";
+                            assert diffLastModsResponse.sdkHttpResponse().isSuccessful() : "Coult not put diff last modified times to the bucket";
                             // End
                             ss.getLogger().log(Level.INFO, "Preserved the old versions of changed files");
                         }
@@ -222,44 +223,43 @@ public final class Backup implements Module, Listener {
                 index.save(indexFile);
                 final PutObjectRequest putIndexRequest = putObjectBuilder
                     .contentType(APP_YML)
-                    .key(formatKey(INDEX + YML))
+                    .key(formatKey.apply(indexName))
                     .build();
-                final PutObjectResponse putIndexResponse = s3Client.putObject(putIndexRequest, indexFile);
-                assert putIndexResponse.isSuccessful() : "Failed to update the index file";
+                final PutObjectResponse putIndexResponse = s3Client.putObject(putIndexRequest, indexFile.toPath());
+                assert putIndexResponse.sdkHttpResponse().isSuccessful() : "Failed to update the index file";
                 // Full backup for current world
-                final File fullArchiveFile = new File(worldTempDir, FULL + TAR_GZ);
-                final Archive fullArchive = new Archive(
+                final Archive fullArchive = Archive.compress(
                     world.getWorldFolder(),
-                    fullArchiveFile.toPath(),
+                    new File(worldTempDir, FULL + TAR_GZ),
                     null);
                 if(fullArchive.count() > 0) {
                     // Put full archive
                     final PutObjectRequest fullArchiveRequest = putObjectBuilder
                         .contentType(APP_GZ)
-                        .key(formatKey(time + TAR_GZ))
+                        .key(formatKey.apply(HEAD + TAR_GZ))
                         .build();
-                    final PutObjectResponse fullArchiveResponse = s3Client.putObejct(
+                    final PutObjectResponse fullArchiveResponse = s3Client.putObject(
                         fullArchiveRequest,
-                        fullArchiveFile.toPath());
-                    assert fullArchiveResponse.isSuccessful() : "Failed to put the full archive";
+                        fullArchive.toPath());
+                    assert fullArchiveResponse.sdkHttpResponse().isSuccessful() : "Failed to put the full archive";
                     // Put full sha1
                     final PutObjectRequest fullSha1Request = putObjectBuilder
                         .contentType(TXT_PL)
-                        .key(formatKey(time + TAR_GZ_SHA1))
+                        .key(formatKey.apply(HEAD + TAR_GZ + SHA1))
                         .build();
                     final PutObjectResponse fullSha1Response = s3Client.putObject(
                         fullSha1Request,
-                        RequestBody.fromBytes(new Hex(UTF_8).encode(fullArchive.digest())));
-                    assert fullSha1Response.isSuccessful() : "Failed to put the full sha1";
+                        new File(fullArchive.getPath() + SHA1).toPath());
+                    assert fullSha1Response.sdkHttpResponse().isSuccessful() : "Failed to put the full sha1";
                     // Put full last modified times
                     final File fullLastModsFile = new File(worldTempDir, FULL + YML);
                     lastMods.save(fullLastModsFile);
                     final PutObjectRequest fullLastModsRequest = putObjectBuilder
                         .contentType(APP_YML)
-                        .key(formatKey(time + YML))
+                        .key(formatKey.apply(HEAD + YML))
                         .build();
                     final PutObjectResponse fullLastModsResponse = s3Client.putObject(fullLastModsRequest, fullLastModsFile.toPath());
-                    assert fullLastModsResponse.isSuccessful() : "Failed to put the full last modified times";
+                    assert fullLastModsResponse.sdkHttpResponse().isSuccessful() : "Failed to put the full last modified times";
                     // End
                     ss.getLogger().log(Level.INFO, "Successfully backed up {0}", name);
                 } else {
@@ -271,15 +271,25 @@ public final class Backup implements Module, Listener {
         public void run() {
             boolean success = false;
             try {
-                worlds();
-                success &= true;
-            } catch(Exception ex) {
-                ex.printStackTrace();
-            }
-            try {
-                plugins();
-                resources();
-                success &= true;
+                System.out.println(tempDir.getPath());
+                try {
+                    worlds();
+                    success &= true;
+                } catch(Exception ex) {
+                    ex.printStackTrace();
+                }
+                try {
+                    plugins();
+                    resources();
+                    success &= true;
+                } catch(Exception ex) {
+                    ex.printStackTrace();
+                }
+                // Empty temp directory
+                Files.walk(tempDir.toPath())
+                    .map(path -> path.toFile())
+                    .filter(file -> file.isFile())
+                    .forEach(file -> file.delete());
             } catch(Exception ex) {
                 ex.printStackTrace();
             }
@@ -307,7 +317,8 @@ public final class Backup implements Module, Listener {
     }
 
     private final void schedule() {
-        scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), interval * TICK_SECOND * 60L);
+        // TODO: 15L -> 60L
+        scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), interval * TICK_SECOND * 15L);
     }
 
     private final String getTime() {
@@ -338,13 +349,12 @@ public final class Backup implements Module, Listener {
         assert interval > 0 : "Interval must be above 0";
         // * Temporary directory
         final String tempDirPath = config.getString("tempDir");
-        if("".equals(tempDirPath) {
-            tempDir = new File("temp_" + getTime());
+        final String tempPrefix = Backup.class.getName();
+        if("".equals(tempDirPath)) {
+            tempDir = Files.createTempDirectory(tempPrefix).toFile();
         } else {
-            tempDir = new File(tempDirPath);
+            tempDir = Files.createTempDirectory(new File(tempDirPath).toPath(), tempPrefix).toFile();
         }
-        if(tempDir.exists()) throw new IOException("The specified temporary directory already exists!");
-        tempDir.mkdirs();
         // * S3 Configuration
         s3Region = Region.of(config.getString("s3Region")); // IllegalArgument
         s3Bucket = config.getString("s3Bucket");
@@ -374,8 +384,6 @@ public final class Backup implements Module, Listener {
         } catch(Exception ex) {
             ex.printStackTrace();
         }
-        // Remove temporary directory
-        assert tempDir.delete() : "Failed to delete the temporary directory";
     }
 
     public final String getName() {
