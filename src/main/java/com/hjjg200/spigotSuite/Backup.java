@@ -45,6 +45,9 @@ public final class Backup implements Module, Listener {
     private final static long TICK_SECOND = 20L;
     private final static String UTF_8 = "UTF-8";
     private final static String HEAD = "HEAD";
+    private final static String FULL = "FULL"; // full represents new head
+    private final static String INDEX = "_index";
+    private final static String VERSIONS = "versions";
     private final static String APP_YML = "application/x-yaml";
     private final static String APP_GZ = "application/gzip";
     private final static String TXT_PL = "text/plain";
@@ -105,22 +108,27 @@ public final class Backup implements Module, Listener {
                     .builder()
                     .bucket(s3Bucket);
                 // General
-                final UnaryOperator<String> formatKey = base -> {
-                    return s3Prefix + name + "/" + base;
-                };
+                final UnaryOperator<String> formatKey = base -> s3Prefix + name + "/" + base;
                 // Create temp directory
                 final File worldTempDir = new File(tempDir, name);
                 worldTempDir.mkdirs();
                 // Get index file
+                final String indexName = INDEX + YML;
+                final File indexFile = new File(worldTempDir, indexName);
                 final GetObjectRequest indexRequest = getObjectBuilder
-                    .key(s3Prefix + name + "/_index.yml")
+                    .key(formatKey(indexName))
                     .build();
-                final ResponseInputStream<GetObjectResponse> indexInputStream = s3Client.getObject(indexRequest);
+                final GetObjectResponse indexResponse = s3Client.getObject(indexRequest, indexFile.toPath());
                 final YamlConfiguration index = new YamlConfiguration();
                 if(indexInputStream.response().isSuccessful()) {
-                    index.loadConfiguration(new InputStreamReader(indexInputStream, UTF_8));
+                    index.loadConfiguration(indexFile);
                 } else if(indexInputStream.response().statusCode() != 404) {
                     throw new Exception("Index file foe " + name + " could not be accessed");
+                }
+                // Versions
+                List<String> versions = index.getStringList(VERSIONS);
+                if(versions == null) {
+                    versions = new ArrayList<String>();
                 }
                 // Cache last modified time
                 final YamlConfiguration lastMods = new YamlConfiguration();
@@ -128,13 +136,6 @@ public final class Backup implements Module, Listener {
                     .map(path -> path.toFile())
                     .filter(file -> file.isFile())
                     .forEach(file -> lastMods.set(file.getPath(), file.lastModified()));
-                // Versions
-                boolean initial = false;
-                List<String> versions = index.getStringList("versions");
-                if(versions == null) {
-                    initial = true;
-                    versions = new ArrayList<String>();
-                }
                 // Head version
                 if(initial == false) {
                     // Preserve only those that did not change
@@ -205,76 +206,86 @@ public final class Backup implements Module, Listener {
                                 .build();
                             final PutObjectResponse diffLastModsResponse = s3Client.putObject(diffLastModsRequest, headLastModsFile.toPath());
                             assert diffLastModsResponse.isSuccessful() : "Coult not put diff last modified times to the bucket";
+                            // End
+                            ss.getLogger().log(Level.INFO, "Preserved the old versions of changed files");
                         }
                         //
                     } catch(Exception ex) {
+                        ss.getLogger().log(Level.SEVERE, "Could not preserve the old world files");
                         ex.printStackTrace();
                     }
                 }
-
-
-
-
-
-
-                //
-                final File dataFile = Resource.get(ss, NAME, name + ".yml");
-                boolean initial = false; // Whether it is the initial backup
-                if(!dataFile.exists()) {
-                    initial = true;
-                    time = "00000000_initial";
-                    dataFile.createNewFile();
-                }
-                final FileConfiguration data = YamlConfiguration.loadConfiguration(dataFile);
-                final Predicate<File> filter = file -> {
-                    final String path = file.getPath();
-                    final long lastMod = file.lastModified();
-                    final boolean mod = lastMod != data.getLong(path);
-                    if(mod) data.set(path, lastMod);
-                    return mod;
-                };
-                final Archive archive = new Archive(world.getWorldFolder(), filter);
-                if(archive.count() > 0) {
-                    ss.getLogger().log(Level.INFO, "Doing backup for {0}", name);
-                    final String baseKey = String.format("%s%s/%s", s3Prefix, name, time);
-                    final HashMap<String, String> metadata = new HashMap<String, String>();
-                    final PutObjectRequest.Builder builder = PutObjectRequest
-                        .builder()
-                      //.storageClass
-                        .bucket(s3Bucket);
-                    // Put archive
-                    final PutObjectRequest gzipRequest = builder
-                        .contentType("application/gzip")
-                        .key(baseKey + ".tar.gz")
+                // Update index file
+                versions.add(time);
+                index.set(VERSIONS, versions);
+                // Put updated index file
+                index.save(indexFile);
+                final PutObjectRequest putIndexRequest = putObjectBuilder
+                    .contentType(APP_YML)
+                    .key(formatKey(INDEX + YML))
+                    .build();
+                final PutObjectResponse putIndexResponse = s3Client.putObject(putIndexRequest, indexFile);
+                assert putIndexResponse.isSuccessful() : "Failed to update the index file";
+                // Full backup for current world
+                final File fullArchiveFile = new File(worldTempDir, FULL + TAR_GZ);
+                final Archive fullArchive = new Archive(
+                    world.getWorldFolder(),
+                    fullArchiveFile.toPath(),
+                    null);
+                if(fullArchive.count() > 0) {
+                    // Put full archive
+                    final PutObjectRequest fullArchiveRequest = putObjectBuilder
+                        .contentType(APP_GZ)
+                        .key(formatKey(time + TAR_GZ))
                         .build();
-                    final PutObjectResponse gzipResponse = s3Client.putObject(gzipRequest, RequestBody.fromInputStream(archive.inputStream(), archive.size()));
-                    if(!gzipResponse.sdkHttpResponse().isSuccessful()) throw new IOException("PutObject for archive failed");
-                    // Put sha1
-                    final PutObjectRequest sha1Request = builder
-                        .contentType("plain/text")
-                        .key(baseKey + ".tar.gz.sha1")
+                    final PutObjectResponse fullArchiveResponse = s3Client.putObejct(
+                        fullArchiveRequest,
+                        fullArchiveFile.toPath());
+                    assert fullArchiveResponse.isSuccessful() : "Failed to put the full archive";
+                    // Put full sha1
+                    final PutObjectRequest fullSha1Request = putObjectBuilder
+                        .contentType(TXT_PL)
+                        .key(formatKey(time + TAR_GZ_SHA1))
                         .build();
-                    final PutObjectResponse sha1Response = s3Client.putObject(sha1Request, RequestBody.fromBytes(new Hex(UTF_8).encode(archive.digest())));
+                    final PutObjectResponse fullSha1Response = s3Client.putObject(
+                        fullSha1Request,
+                        RequestBody.fromBytes(new Hex(UTF_8).encode(fullArchive.digest())));
+                    assert fullSha1Response.isSuccessful() : "Failed to put the full sha1";
+                    // Put full last modified times
+                    final File fullLastModsFile = new File(worldTempDir, FULL + YML);
+                    lastMods.save(fullLastModsFile);
+                    final PutObjectRequest fullLastModsRequest = putObjectBuilder
+                        .contentType(APP_YML)
+                        .key(formatKey(time + YML))
+                        .build();
+                    final PutObjectResponse fullLastModsResponse = s3Client.putObject(fullLastModsRequest, fullLastModsFile.toPath());
+                    assert fullLastModsResponse.isSuccessful() : "Failed to put the full last modified times";
+                    // End
+                    ss.getLogger().log(Level.INFO, "Successfully backed up {0}", name);
                 } else {
                     ss.getLogger().log(Level.INFO, "Nothing to backup for {0}", name);
                 }
-                data.save(dataFile);
            }
         }
         @Override
         public void run() {
             boolean success = false;
             try {
-                // Backup model is incremental
-                // TODO: change to reverse incremental
-                success = true;
+                worlds();
+                success &= true;
             } catch(Exception ex) {
                 ex.printStackTrace();
-            } finally {
-                // unlock must be done async in order to prevent deadlock
-                MUTEX.release();
-                scheduler.scheduleSyncDelayedTask(ss, new PostTask(success));
             }
+            try {
+                plugins();
+                resources();
+                success &= true;
+            } catch(Exception ex) {
+                ex.printStackTrace();
+            }
+            // unlock must be done async in order to prevent deadlock
+            MUTEX.release();
+            scheduler.scheduleSyncDelayedTask(ss, new PostTask(success));
         }
     }
 
