@@ -71,6 +71,24 @@ Backup:
     # Unit: minute
     interval: 60
 
+    # Temp directory
+    tempDir: ''
+
+    # Server resources
+    resources:
+        - banned-ips.json
+        - banned-players.json
+        - bukkit.yml
+        - commands.yml
+        - eula.txt
+        - help.yml
+        - ops.json
+        - permissions.yml
+        - server.properties
+        - spigot.yml
+        - usercache.json
+        - whitelist.json
+
     s3Region: ''
 
     s3Bucket: ''

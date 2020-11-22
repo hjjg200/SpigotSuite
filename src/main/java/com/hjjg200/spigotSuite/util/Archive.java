@@ -19,6 +19,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 
 public final class Archive {
 
+    // TODO: use temp directory and filestream for acrhiving
     private long _count = 0;
     private long _size = 0;
     private final DigestInputStream sha1;
