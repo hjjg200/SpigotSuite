@@ -11,22 +11,22 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;;
 import java.util.function.Predicate;
+import java.util.Iterator;
 import java.security.MessageDigest;
 import java.security.DigestOutputStream;
+import java.util.NoSuchElementException;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 
 import org.apache.commons.codec.binary.Hex;
 
 public final class Archive extends File {
 
     private final static String UTF_8 = "UTF-8";
-    private final static String TAR_GZ = ".tar.gz";
+    private final static String TAR = ".tar";
     private final static String SHA1 = ".sha1";
 
     public Archive(final File parent, final String child) {
@@ -40,23 +40,38 @@ public final class Archive extends File {
     }
     // public File(final URI)
 
-    private volatile boolean decompressed = false;
+    public final static class Entry extends TarArchiveEntry {
+        private final File file;
+        public Entry(final File file, final String name) {
+            super(file, name);
+            this.file = file;
+        }
+        public final String md5() {
+            try {
+                return DigestUtils.md5Hex(new BufferedInputStream(Files.newInputStream(file.toPath())));
+            } catch(Exception ex) {
+                ex.printStackTrace();
+            }
+            return "";
+        }
+    }
+
     private volatile long _count;
     public synchronized long count() {
         return _count;
     }
-    public final synchronized void decompress() throws Exception {
-        _decompress(null);
+    public final synchronized void unpack() throws Exception {
+        _unpack(null);
     }
-    public final synchronized void decompress(final File parent) throws Exception {
-        _decompress(parent);
+    public final synchronized void unpack(final File parent) throws Exception {
+        _unpack(parent);
     }
-    private final synchronized void _decompress(File parent) throws Exception {
+    private final synchronized void _unpack(File parent) throws Exception {
         // Default values
         if(parent == null) parent = this.getParentFile();
         // Start
         _count = 0;
-        final TarArchiveInputStream is = new TarArchiveInputStream(new GzipCompressorInputStream(new BufferedInputStream(new FileInputStream(this))));
+        final TarArchiveInputStream is = new TarArchiveInputStream(new BufferedInputStream(new FileInputStream(this)));
         while(true) {
             final TarArchiveEntry entry = is.getNextTarEntry();
             if(entry == null) break;
@@ -71,46 +86,50 @@ public final class Archive extends File {
         is.close();
     }
 
-    public static final Archive compress(final File source) throws Exception {
-        return _compress(source, null, null);
+    public static final Archive pack(final File source) throws Exception {
+        return _pack(source, null, null);
     }
-    public static final Archive compress(final File source, final Predicate<File> filter) throws Exception {
-        return _compress(source, null, filter);
+    public static final Archive pack(final File source, final Predicate<Entry> filter) throws Exception {
+        return _pack(source, null, filter);
     }
-    public static final Archive compress(final File source, final File dest) throws Exception {
-        return _compress(source, dest, null);
+    public static final Archive pack(final File source, final File dest) throws Exception {
+        return _pack(source, dest, null);
     }
-    public static final Archive compress(final File source, final File dest, final Predicate<File> filter) throws Exception {
-        return _compress(source, dest, filter);
+    public static final Archive pack(final File source, final File dest, final Predicate<Entry> filter) throws Exception {
+        return _pack(source, dest, filter);
     }
-    private static final Archive _compress(final File source, File dest, Predicate<File> filter) throws Exception {
+    private static final Archive _pack(final File source, File dest, Predicate<Entry> filter) throws Exception {
         // Default
-        if(dest == null) dest = new File(source.getPath() + TAR_GZ);
+        if(dest == null) dest = new File(source.getPath() + TAR);
         if(filter == null) filter = i -> true;
         // Archive created at path
         final Archive archive = new Archive(dest.getPath());
-        final DigestOutputStream sha1 = new DigestOutputStream(new FileOutputStream(archive), DigestUtils.getSha1Digest());
-        final TarArchiveOutputStream tar = new TarArchiveOutputStream(new GzipCompressorOutputStream(new BufferedOutputStream(sha1)));
-        sha1.on(true);
+        final DigestOutputStream sha1 = new DigestOutputStream(Files.newOutputStream(archive.toPath()), DigestUtils.getSha1Digest());
+        final TarArchiveOutputStream tar = new TarArchiveOutputStream(new BufferedOutputStream(sha1));
+        tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
+        tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
         // Archive
         archive._count = 0;
-        final Predicate<File> ff = filter;
         final Path sourceParent = source.getParentFile().toPath();
-        Files.walk(source.toPath())
-            .forEach(each -> {
-                final Path rel = sourceParent.relativize(each);
-                final File file = each.toFile();
-                if(file.isDirectory()) return;
-                if(!ff.test(rel.toFile())) return;
-                try {
-                    tar.putArchiveEntry(new TarArchiveEntry(file, rel.toString()));
-                    Files.copy(each, tar);
-                    tar.closeArchiveEntry();
-                } catch(Exception ex) {
-                    ex.printStackTrace();
-                }
+        // Walk
+        final Iterator<Entry> it = Files.walk(source.toPath())
+            .map(path -> new Entry(path.toFile(), sourceParent.relativize(path).toString()))
+            .filter(entry -> entry.isFile())
+            .filter(filter)
+            .iterator();
+        while(true) {
+            try {
+                final TarArchiveEntry entry = it.next();
+                tar.putArchiveEntry(entry);
+                Files.copy(entry.getFile().toPath(), tar);
+                tar.closeArchiveEntry();
                 archive._count++;
-            });
+            } catch(NoSuchElementException ex) {
+                break;
+            } catch(Exception ex) {
+                throw ex;
+            }
+        }
         tar.close();
         // Write sha1 file
         final File sha1File = new File(archive.getPath() + SHA1);
