@@ -13,6 +13,8 @@ import java.util.function.UnaryOperator;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CompletableFuture;
 
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -33,13 +35,17 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.scheduler.BukkitScheduler;
+import org.bukkit.entity.Player;
+import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.CommandExecutor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.Listener;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.server.ServerLoadEvent;
 
 import com.hjjg200.spigotSuite.util.Archive;
 import com.hjjg200.spigotSuite.util.Resource;
@@ -52,8 +58,11 @@ final class S3Short {
     private final GetObjectRequest.Builder getObjectBuilder;
     private final PutObjectRequest.Builder putObjectBuilder;
 
-    public S3Short(final S3Client client, final String bucket, final String prefix) {
-        this.client = client;
+    public S3Short(final Region region, final String bucket, final String prefix) {
+        client = S3Client.builder()
+            .credentialsProvider(SystemPropertyCredentialsProvider.create())
+            .region(region)
+            .build();
         this.bucket = bucket;
         this.prefix = prefix;
 
@@ -73,6 +82,10 @@ final class S3Short {
         return "";
     }
 
+    public final HeadBucketResponse headBucket() throws Exception {
+        return client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
+    }
+
     public final GetObjectResponse getObject(final String key, final File file) throws Exception {
         return client.getObject(
             getObjectBuilder.key(prefix + key).build(),
@@ -90,166 +103,215 @@ final class S3Short {
 public final class Backup implements Module, Listener {
 
     private final static String NAME = Backup.class.getSimpleName();
-    private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss");
-    private final static long TICK_SECOND = 20L;
+    private final static long TICK_MINUTE = 20L * 60L;
     private final static String UTF_8 = "UTF-8";
-    private final static String HEAD = "HEAD";
-    private final static String FULL = "FULL"; // full represents new head
     private final static String INDEX = "_index";
+    private final static String SIZE = "size";
     private final static String VERSIONS = "versions";
+    private final static String PLUGINS = "plugins";
+    private final static String RESOURCES = "resources";
     private final static String TAR = ".tar";
     private final static String SHA1 = ".sha1";
     private final static String YML = ".yml";
     private final static Semaphore MUTEX = new Semaphore(1);
     private final SpigotSuite ss;
     private final BukkitScheduler scheduler;
+    private File lock;
+    private volatile CompletableFuture<Void> future;
     private boolean enabled;
+    private final AtomicBoolean scheduled = new AtomicBoolean(false);
+    private final AtomicBoolean running = new AtomicBoolean(false);
+    private int taskId = -1;
     private long interval;
+    private int cycleLength;
+    private File[] resources;
     private File tempDir;
+    private File cacheDir;
     private String s3Bucket; // = "my-s3-bucket"
     private Region s3Region; // = "ap-northeast-2"
     private String s3Prefix; // = "/backup/minecraft/"
     private S3Short s3Short;
 
+    public final static class Version {
+        public static enum Type {
+            FULL,
+            INCREMENTAL
+        }
+        private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss");
+        private final static String SEPARATOR = "-"; // this must be regex compatible
+        private final LocalDateTime _time;
+        private final Type _type;
+
+        public Version(final String string) {
+            final String[] split = string.split(SEPARATOR);
+            if(split.length < 2) throw new IllegalArgumentException("Malformed version");
+            _time = LocalDateTime.from(FORMATTER.parse(split[0]));
+            _type = Type.valueOf(Type.class, split[1]);
+        }
+        public Version(final LocalDateTime time, final Type type) {
+            _time = time;
+            _type = type;
+        }
+        public final Type type() {
+            return _type;
+        }
+        public final LocalDateTime time() {
+            return _time;
+        }
+        public final String toString() {
+            return _time.format(FORMATTER) + SEPARATOR + _type.name();
+        }
+        public final boolean equals(final Version rhs) {
+            return this._time.equals(rhs._time) && this._type.equals(rhs._type);
+        }
+    }
+
+    private final class CommandBackup implements CommandExecutor {
+        @Override
+        public boolean onCommand(final CommandSender sender, final Command command, final String label, final String[] args) {
+            if(args.length == 0) return false;
+
+            switch(args[0]) {
+            case "info":
+                if(!(sender instanceof Player)) return true;
+                final Player player = (Player)sender;
+                for(final File worldDir : cacheDir.listFiles()) {
+                    if(!worldDir.isDirectory()) continue;
+                    final YamlConfiguration index = YamlConfiguration.loadConfiguration(new File(worldDir, INDEX + YML));
+                    final String worldName = worldDir.getName();
+                    player.sendMessage("# " + worldName);
+                    player.sendMessage(String.format("Size: %.2f GB", index.getDouble("size") / 1e+3));
+                    player.sendMessage("Versions:");
+                    for(final String version : index.getStringList(VERSIONS)) {
+                        player.sendMessage("- " + version);
+                    }
+                    player.sendMessage("");
+                }
+                break;
+            }
+
+            return true;
+        }
+    }
+
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent e) {
-        // TODO: fix this
-        schedule();
+        schedule(interval * TICK_MINUTE);
+    }
+
+    @EventHandler
+    public void onServerLoad(ServerLoadEvent e) {
+        // Check for file lock
+        if(lock.exists()) {
+            ss.getLogger().log(Level.SEVERE, "Backup file lock is found, doing an immediate backup");
+            lock.delete();
+            schedule(0);
+        }
     }
 
     // This class is run synchronously
     private final class BackupTask implements Runnable {
         @Override
         public void run() {
+            ss.getLogger().info("Starting to backup...");
+            scheduled.set(false);
+            taskId = -1;
             try {
-                MUTEX.acquire();
+                lock.createNewFile();
+                final Server server = ss.getServer();
+                final CommandSender cs = server.getConsoleSender();
+                server.dispatchCommand(cs, "save-all");
+                server.dispatchCommand(cs, "save-off");
+                future = new CompletableFuture<>();
+                CompletableFuture.runAsync(new AsyncTask());
             } catch(Exception ex) {
+                ss.getLogger().log(Level.SEVERE, "Failed to initiate the backup procedure!");
                 ex.printStackTrace();
             }
-            ss.getLogger().info("Starting to backup...");
-            final Server server = ss.getServer();
-            final CommandSender cs = server.getConsoleSender();
-            server.dispatchCommand(cs, "save-all");
-            server.dispatchCommand(cs, "save-off");
-            scheduler.runTaskAsynchronously(ss, new AsyncTask());
         }
     }
 
     private final class AsyncTask implements Runnable {
-        private final String time = getTime();
-        private final void resources() throws Exception {
-            // Always full backup
-        }
-        private final void plugins() throws Exception {
-            // Only resources backup
-            // Include enabled plugins' versions
-        }
-        private final void worlds() throws Exception {
-            // Reverse incremental backup
-            for(final World world : ss.getServer().getWorlds()) {
-                final String name = String.format("%s_%s", world.getName(), world.getUID());
-                // General
-                final UnaryOperator<String> format = base -> name + "/" + base;
-                // Create tempi directory
-                final File worldTempDir = new File(tempDir, name);
-                worldTempDir.mkdirs();
-                // Get index file
-                final String indexName = INDEX + YML;
-                final File indexFile = new File(worldTempDir, indexName);
-                YamlConfiguration index = new YamlConfiguration();
-                try {
-                    s3Short.getObject(format.apply(indexName), indexFile);
-                    index = YamlConfiguration.loadConfiguration(indexFile);
-                } catch(NoSuchKeyException ex) {
-                } catch(Exception ex) {
-                    throw ex;
+        private final LocalDateTime time = LocalDateTime.now();
+
+        /*
+         * -1 as folderCycleLength makes backup infinite incremental
+         */
+        private final void folder(final File[] sources, final String name, final int folderCycleLength) throws Exception {
+
+            final UnaryOperator<String> format = base -> name + "/" + base;
+
+            // Create temp directory
+            final File folderTempDir = new File(tempDir, name);
+            folderTempDir.mkdirs();
+
+            // Get index file
+            final String indexName = INDEX + YML;
+            final File indexFile = new File(folderTempDir, indexName);
+            YamlConfiguration index = new YamlConfiguration();
+            try {
+                s3Short.getObject(format.apply(indexName), indexFile);
+                index = YamlConfiguration.loadConfiguration(indexFile);
+            } catch(NoSuchKeyException ex) {
+            } catch(Exception ex) {
+                throw ex;
+            }
+            // * Versions
+            List<String> versionStrings = index.getStringList(VERSIONS);
+
+            // Determine the version for this backup
+            final AtomicBoolean isFull = new AtomicBoolean(true);
+            for(int i = versionStrings.size() - 1; i >= 0; i--) {
+                if(folderCycleLength > 0 && versionStrings.size() - i >= folderCycleLength) {
+                    break;
+                } else if(new Version(versionStrings.get(i)).type().equals(Version.Type.FULL)) {
+                    isFull.set(false);
+                    break;
                 }
-                // Versions
-                List<String> versions = index.getStringList(VERSIONS);
-                // Last modified time
-                final YamlConfiguration md5s = new YamlConfiguration();
-                // Head version
-                if(versions.size() > 0) {
-                    // Preserve only those that did not change
-                    try {
-                        // Prepare
-                        final String headVersion = versions.get(versions.size() - 1);
-                        final File headDir = new File(worldTempDir, HEAD);
-                        headDir.mkdirs();
-                        // Head sha1
-                        final String headSha1Name = HEAD + TAR + SHA1;
-                        s3Short.getObject(format.apply(headSha1Name), new File(headDir, headSha1Name));
-                        // Head archive
-                        final String headArchiveName = HEAD + TAR;
-                        final Archive headArchive = new Archive(headDir, headArchiveName);
-                        s3Short.getObject(format.apply(headArchiveName), headArchive);
-                        // * Decompress head archive
-                        headArchive.unpack();
-                        // * Delete old head archive
-                        headArchive.delete();
-                        // Head md5s
-                        final File headMd5sFile = new File(headDir, HEAD + YML);
-                        s3Short.getObject(format.apply(HEAD + YML), headMd5sFile);
-                        final YamlConfiguration headMd5s = YamlConfiguration.loadConfiguration(headMd5sFile);
-                        // * Archive again -- changed files only
-                        final String diffArchiveName = headVersion + TAR;
-                        final Archive diffArchive = Archive.pack(
-                            new File(headDir, world.getName()),
-                            new File(worldTempDir, diffArchiveName),
-                            entry -> {
-                                final String md5 = entry.md5();
-                                final String md5Key = DigestUtils.md5Hex(entry.getName());
-                                md5s.set(md5Key, md5);
-                                return !md5.equals(headMd5s.getString(md5Key));
-                            });
-                        System.out.println(diffArchive.count());
-                        if(diffArchive.count() > 0) {
-                            // Put archive
-                            s3Short.putObject(format.apply(diffArchiveName), diffArchive);
-                            // Put sha1
-                            final File diffSha1File = new File(diffArchive.getPath() + SHA1);
-                            s3Short.putObject(format.apply(diffArchiveName + SHA1), diffSha1File);
-                            // Put md5s
-                            s3Short.putObject(format.apply(headVersion + YML), headMd5sFile);
-                            // End
-                            ss.getLogger().log(Level.INFO, "Preserved the old versions of changed files");
-                        } else {
-                            // Remove this version from versions
-                            versions.remove(headVersion);
-                        }
-                        //
-                    } catch(Exception ex) {
-                        ss.getLogger().log(Level.SEVERE, "Could not preserve the old world files");
-                        ex.printStackTrace();
-                    }
-                }
-                // Update index file
-                versions.add(time);
-                index.set(VERSIONS, versions);
-                // Put updated index file
+            }
+            final Version version = new Version(time, isFull.get() ? Version.Type.FULL : Version.Type.INCREMENTAL);
+            final YamlConfiguration md5s = new YamlConfiguration();
+            final YamlConfiguration headMd5s = new YamlConfiguration();
+
+            // Head version
+            if(versionStrings.size() > 0) {
+                final Version headVersion = new Version(versionStrings.get(versionStrings.size() - 1));
+                final File headMd5sFile = new File(folderTempDir, headVersion.toString() + YML);
+                s3Short.getObject(format.apply(headVersion.toString() + YML), headMd5sFile);
+                headMd5s.load(headMd5sFile);
+            }
+
+            // Archive accordingly
+            final Archive archive = Archive.pack(
+                sources,
+                new File(folderTempDir, version + TAR),
+                entry -> {
+                    final String key = DigestUtils.md5Hex(entry.getName());
+                    final String md5 = entry.md5();
+                    md5s.set(key, md5);
+                    return isFull.get() || !md5.equals(headMd5s.getString(key));
+                });
+
+            if(archive.count() > 0) {
+                s3Short.putObject(format.apply(version.toString() + TAR), archive);
+                s3Short.putObject(format.apply(version.toString() + TAR + SHA1), new File(archive.getPath() + SHA1));
+                final File md5sFile = new File(folderTempDir, version.toString() + YML);
+                md5s.save(md5sFile);
+                s3Short.putObject(format.apply(version.toString() + YML), md5sFile);
+
+                index.set(SIZE, index.getLong(SIZE) + Files.size(archive.toPath()) / 1e+6);
+                versionStrings.add(version.toString());
+                index.set(VERSIONS, versionStrings);
                 index.save(indexFile);
                 s3Short.putObject(format.apply(indexName), indexFile);
-                // Full backup for current world
-                final Archive fullArchive = Archive.pack(
-                    world.getWorldFolder(),
-                    new File(worldTempDir, FULL + TAR),
-                    md5s.getValues(false).size() > 0
-                        ? null
-                        : entry -> {
-                            md5s.set(DigestUtils.md5Hex(entry.getName()), entry.md5());
-                            return true;
-                        });
-                // Put full archive
-                s3Short.putObject(format.apply(HEAD + TAR), fullArchive);
-                // Put full sha1
-                s3Short.putObject(format.apply(HEAD + TAR + SHA1), new File(fullArchive.getPath() + SHA1));
-                // Put full last modified times
-                final File fullMd5sFile = new File(worldTempDir, FULL + YML);
-                md5s.save(fullMd5sFile);
-                s3Short.putObject(format.apply(HEAD + YML), fullMd5sFile);
-                // End
+
+                final File folderCacheDir = new File(cacheDir, name);
+                index.save(new File(folderCacheDir, INDEX + YML));
+
                 ss.getLogger().log(Level.INFO, "Successfully backed up {0}", name);
-           }
+            } else {
+                ss.getLogger().log(Level.INFO, "Nothing to backup for {0}", name);
+            }
         }
         @Override
         public void run() {
@@ -257,14 +319,16 @@ public final class Backup implements Module, Listener {
             try {
                 System.out.println(tempDir.getPath());
                 try {
-                    worlds();
+                    for(final World world : ss.getServer().getWorlds()) {
+                        folder(new File[]{world.getWorldFolder()}, String.format("%s_%s", world.getName(), world.getUID()), cycleLength);
+                    }
                     success &= true;
                 } catch(Exception ex) {
                     ex.printStackTrace();
                 }
                 try {
-                    plugins();
-                    resources();
+                    folder(new File[]{new File(PLUGINS)}, PLUGINS, -1);
+                    folder(resources, RESOURCES, -1);
                     success &= true;
                 } catch(Exception ex) {
                     ex.printStackTrace();
@@ -278,7 +342,6 @@ public final class Backup implements Module, Listener {
                 ex.printStackTrace();
             }
             // unlock must be done async in order to prevent deadlock
-            MUTEX.release();
             scheduler.scheduleSyncDelayedTask(ss, new PostTask(success));
         }
     }
@@ -296,24 +359,19 @@ public final class Backup implements Module, Listener {
             }
             final Server server = ss.getServer();
             server.dispatchCommand(server.getConsoleSender(), "save-on");
-            schedule();
+            lock.delete();
+            running.set(false);
+            future.complete(null);
+            if(ss.getServer().getOnlinePlayers().size() > 0) schedule(interval * TICK_MINUTE);
         }
     }
 
-    private final void schedule() {
-        // TODO: 30L -> 60L
-        scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), interval * TICK_SECOND * 30L);
+    private final void schedule(final long later) {
+        if(running.compareAndSet(false, true)) {
+            taskId = scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), later);
+            scheduled.set(true);
+        }
     }
-
-    private final String getTime() {
-        return LocalDateTime.now().format(FORMATTER);
-    }
-
-    // public final long BackupSize -> entire backup size filtered by prefix
-
-    // public final String[] versions -> list available versions
-
-    // public final void assemble -> 
 
     public Backup(final SpigotSuite ss) {
         this.ss = ss;
@@ -322,15 +380,25 @@ public final class Backup implements Module, Listener {
 
     public final void enable() throws Exception {
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
-        // Java System Properties - aws.accessKeyId and aws.secretKey
-        final FileConfiguration awsCredentials = YamlConfiguration.loadConfiguration(Resource.get(ss, NAME, "awsCredentials.yml"));
-        System.setProperty("aws.accessKeyId", awsCredentials.getString("accessKeyId"));
-        System.setProperty("aws.secretAccessKey", awsCredentials.getString("secretAccessKey"));
+
+        // Resources
+        // * File lock
+        lock = new File(NAME + ".lock");
+        // * Cache file is the cached index file after the backup
+        cacheDir = Resource.directory(ss, NAME, "cache");
+
         // Configuration
         enabled = config.getBoolean("enabled");
         if(!enabled) throw new Module.DisabledException();
         interval = config.getLong("interval");
         assert interval > 0 : "Interval must be above 0";
+        cycleLength = config.getInt("cycleLength");
+        assert cycleLength > 0 : "Cycle length must be above 0";
+        final List<File> resourcesList = new ArrayList<File>();
+        for(final String resource : config.getStringList(RESOURCES)) {
+            resourcesList.add(new File(resource));
+        }
+        resources = resourcesList.toArray(new File[0]);
         // * Temporary directory
         final String tempDirPath = config.getString("tempDir");
         final String tempPrefix = Backup.class.getName();
@@ -339,34 +407,35 @@ public final class Backup implements Module, Listener {
         } else {
             tempDir = Files.createTempDirectory(new File(tempDirPath).toPath(), tempPrefix).toFile();
         }
-        // * S3 Configuration
-        s3Region = Region.of(config.getString("s3Region")); // IllegalArgument
-        s3Bucket = config.getString("s3Bucket");
-        s3Prefix = config.getString("s3Prefix");
-        // Prepare client
-        final S3Client s3Client = S3Client.builder()
-            .credentialsProvider(SystemPropertyCredentialsProvider.create())
-            .region(s3Region)
-            .build();
-        // HeadBucket to check permissions
-        final HeadBucketRequest headRequest = HeadBucketRequest.builder()
-            .bucket(s3Bucket)
-            .build();
-        final HeadBucketResponse headResponse = s3Client.headBucket(headRequest);
-        if(!headResponse.sdkHttpResponse().isSuccessful()) {
-            throw new Exception("Could not access the specified S3 bucket with the supplied info");
-        }
-        // Short
-        s3Short = new S3Short(s3Client, s3Bucket, s3Prefix);
-        // Succesful configuration
+
+        // AWS
+        // * Credentials
+        final FileConfiguration awsCredentials = YamlConfiguration.loadConfiguration(Resource.get(ss, NAME, "awsCredentials.yml"));
+        System.setProperty("aws.accessKeyId", awsCredentials.getString("accessKeyId"));
+        System.setProperty("aws.secretAccessKey", awsCredentials.getString("secretAccessKey"));
+        // * Client
+        s3Short = new S3Short(
+            Region.of(config.getString("s3Region")),
+            config.getString("s3Bucket"),
+            config.getString("s3Prefix")
+        );
+        s3Short.headBucket();
+
         ss.getLogger().log(Level.INFO, "Backup is configured at every {0} minutes", interval);
-        // Register events
+        ss.getCommand(NAME).setExecutor(new CommandBackup());
         ss.getServer().getPluginManager().registerEvents(this, ss);
+
     }
 
     public final void disable() {
         try {
-            MUTEX.acquire();
+            if(scheduled.compareAndSet(true, false)) {
+                scheduler.cancelTask(taskId);
+                new BackupTask().run();
+            }
+            if(future != null) {
+                future.join();
+            }
         } catch(Exception ex) {
             ex.printStackTrace();
         }

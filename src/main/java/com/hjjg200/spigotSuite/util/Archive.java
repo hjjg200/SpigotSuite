@@ -9,7 +9,8 @@ import java.io.InputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.function.Predicate;
 import java.util.Iterator;
 import java.security.MessageDigest;
@@ -86,21 +87,14 @@ public final class Archive extends File {
         is.close();
     }
 
-    public static final Archive pack(final File source) throws Exception {
-        return _pack(source, null, null);
+    public static final Archive pack(final File[] sources, final File dest) throws Exception {
+        return _pack(sources, dest, null);
     }
-    public static final Archive pack(final File source, final Predicate<Entry> filter) throws Exception {
-        return _pack(source, null, filter);
+    public static final Archive pack(final File[] sources, final File dest, final Predicate<Entry> filter) throws Exception {
+        return _pack(sources, dest, filter);
     }
-    public static final Archive pack(final File source, final File dest) throws Exception {
-        return _pack(source, dest, null);
-    }
-    public static final Archive pack(final File source, final File dest, final Predicate<Entry> filter) throws Exception {
-        return _pack(source, dest, filter);
-    }
-    private static final Archive _pack(final File source, File dest, Predicate<Entry> filter) throws Exception {
+    private static final Archive _pack(final File[] sources, File dest, Predicate<Entry> filter) throws Exception {
         // Default
-        if(dest == null) dest = new File(source.getPath() + TAR);
         if(filter == null) filter = i -> true;
         // Archive created at path
         final Archive archive = new Archive(dest.getPath());
@@ -110,24 +104,29 @@ public final class Archive extends File {
         tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
         // Archive
         archive._count = 0;
-        final Path sourceParent = source.getParentFile().toPath();
-        // Walk
-        final Iterator<Entry> it = Files.walk(source.toPath())
-            .map(path -> new Entry(path.toFile(), sourceParent.relativize(path).toString()))
-            .filter(entry -> entry.isFile())
-            .filter(filter)
-            .iterator();
-        while(true) {
-            try {
-                final TarArchiveEntry entry = it.next();
-                tar.putArchiveEntry(entry);
-                Files.copy(entry.getFile().toPath(), tar);
-                tar.closeArchiveEntry();
-                archive._count++;
-            } catch(NoSuchElementException ex) {
-                break;
-            } catch(Exception ex) {
-                throw ex;
+        for(final File source : sources) {
+            File parentFile = source.getParentFile();
+            final Path parent = parentFile == null
+                ? Paths.get("")
+                : parentFile.toPath();
+            // Walk
+            final Iterator<Entry> it = Files.walk(source.toPath())
+                .map(path -> new Entry(path.toFile(), parent.relativize(path).toString()))
+                .filter(entry -> entry.isFile())
+                .filter(filter)
+                .iterator();
+            while(true) {
+                try {
+                    final TarArchiveEntry entry = it.next();
+                    tar.putArchiveEntry(entry);
+                    Files.copy(entry.getFile().toPath(), tar);
+                    tar.closeArchiveEntry();
+                    archive._count++;
+                } catch(NoSuchElementException ex) {
+                    break;
+                } catch(Exception ex) {
+                    throw ex;
+                }
             }
         }
         tar.close();

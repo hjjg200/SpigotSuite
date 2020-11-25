@@ -5,34 +5,30 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
 
 import org.bukkit.plugin.Plugin;
 
 public final class Resource {
 
-    private final static File getResourceFile(Plugin plugin, String ...elements) {
+    public final static File directory(Plugin plugin, String start, String ...more) {
         plugin.getDataFolder().mkdirs();
-        File resource = null;
-        for(int i = 0; i < elements.length; i++) {
-            resource = resource != null
-                ? new File(resource, elements[i])
-                : new File(elements[i]);
-            if(i == elements.length - 2) resource.mkdirs();
-        }
+        final File dir = new File(plugin.getDataFolder(), Paths.get(start, more).toString());
+        dir.mkdirs();
+        return dir;
+    }
+
+    private final static File getResourceFile(Plugin plugin, String start, String ...more) {
+        plugin.getDataFolder().mkdirs();
+        final File resource = Paths.get(start, more).toFile();
         if(plugin.getResource(resource.getPath()) != null) plugin.saveResource(resource.getPath(), false);
         return resource;
     }
 
-    public final static File get(Plugin plugin, String ...elements) {
-        return new File(plugin.getDataFolder(), getResourceFile(plugin, elements).getPath());
-    }
-
-    public final static InputStream getInputStream(Plugin plugin, String ...elements) {
-        return plugin.getResource(getResourceFile(plugin, elements).getPath());
-    }
-
-    public final static Reader getReader(Plugin plugin, String ...elements) {
-        return new InputStreamReader(getInputStream(plugin, elements), StandardCharsets.UTF_8);
+    public final static File get(Plugin plugin, String start, String ...more) {
+        final File file = new File(plugin.getDataFolder(), getResourceFile(plugin, start, more).getPath());
+        file.getParentFile().mkdirs();
+        return file;
     }
 
 }

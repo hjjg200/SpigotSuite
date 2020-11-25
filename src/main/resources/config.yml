@@ -74,7 +74,12 @@ Backup:
     # Temp directory
     tempDir: ''
 
-    # Server resources
+    # Each backup cycle consists of one full backup and follow-up
+    # incremental backups. If the length is 1, only the full backups
+    # will take place.
+    cycleLength: 5
+
+    # Server resources, relative to the spigot.jar's working directory
     resources:
         - banned-ips.json
         - banned-players.json
@@ -89,10 +94,17 @@ Backup:
         - usercache.json
         - whitelist.json
 
+    # S3 Settings
+
+    ## AWS credentials file is at Backup/awsCredentials.yml
+
+    ## Region for the bucket
     s3Region: ''
 
+    ## Bucket name
     s3Bucket: ''
 
+    ## Prefix for the backups, if want to have the backups in a directory
+    ## put a slash at the end of the prefix
     s3Prefix: ''
 
-    # Aws credentials file is at Backup/awsCredentials.yml
