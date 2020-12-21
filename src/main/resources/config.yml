@@ -48,21 +48,6 @@ ChatBridge:
     # Default: none
     plugin: none
 
-# Motd configuration
-Motd:
-
-    # Motd message shown before load completion
-    # %s is substituted with remaining time, if available
-    anteLoad: "Server is loading worlds...%s"
-
-    # anteLoad shows expected remaining load time in minutes and seconds
-    # %1$d = minute
-    # %2$d = second
-    timeFormat: " %1$d:%2$d"
-
-    # Motd message shown after load completion
-    postLoad: "Server is up and running!"
-
 # Backup configuration
 Backup:
 
@@ -108,3 +93,6 @@ Backup:
     ## put a slash at the end of the prefix
     s3Prefix: ''
 
+SimpleRcon:
+
+    port: 25576

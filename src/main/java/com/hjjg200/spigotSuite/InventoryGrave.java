@@ -73,23 +73,20 @@ public final class InventoryGrave implements Module, Listener {
         // Make chest
         cBlk.setType(Material.CHEST);
         final Chest c = (Chest)cBlk.getState();
-        final Inventory cInv = c.getInventory();
-        // * Put items
-        for(int i = 0; i < pInv.getSize(); i++) {
-            final ItemStack item = pInv.getItem(i);
-            if(item == null) continue;
-            if(keptSlots.contains(i)) {
-                // Pop items out and put it in chest
-                drops.remove(item);
-                cInv.addItem(item);
-            }
-        }
         // * Set facing
         final Directional cData = (Directional)c.getBlockData();
         cData.setFacing(pBf);
         c.setBlockData(cData);
-        // * Update
         c.update(true);
+        // * Put items
+        final Inventory cInv = c.getBlockInventory();
+        for(int i = 0; i < pInv.getSize(); i++) {
+            ItemStack item = pInv.getItem(i);
+            if(item == null) continue;
+            if(keptSlots.contains(i) == false) continue;
+            drops.remove(item);
+            cInv.addItem(item);
+        }
 
         // Make sign
         sBlk.setType(Material.CRIMSON_SIGN);

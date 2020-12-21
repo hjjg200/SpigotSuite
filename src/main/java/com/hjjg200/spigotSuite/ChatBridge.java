@@ -1,7 +1,13 @@
 package com.hjjg200.spigotSuite;
 
 import java.io.File;
+import java.io.OutputStream;
 import java.util.function.Consumer;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
 
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.Configuration;
@@ -16,6 +22,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 
 import com.hjjg200.spigotSuite.chatBridge.*;
+import com.hjjg200.spigotSuite.util.Log4jUtils;
 
 public final class ChatBridge implements Listener, Module {
 
@@ -24,6 +31,8 @@ public final class ChatBridge implements Listener, Module {
 
     private final SpigotSuite ss;
     private Plugin plugin;
+    private Logger logger = null;
+    private Appender logAppender = null;
 
     public ChatBridge(final SpigotSuite ss) {
         this.ss = ss;
@@ -59,23 +68,30 @@ public final class ChatBridge implements Listener, Module {
             return;
         }
         plugin.subscribeEvent(ev -> {
-            ss.getServer().broadcastMessage(String.format(CHAT_NAME_FORMAT + "%s", ev.getDisplayName(), ev.getContent()));
+            ss.getServer().broadcastMessage(String.format(CHAT_NAME_FORMAT + "%s", ev.getDisplayName(),
+                                            ev.getContent()));
         });
         plugin.enable();
+        // * Admin log appender
+        logger = (Logger)LogManager.getRootLogger();
+        logAppender = plugin.logAppender(Log4jUtils.getLayout());
+        logger.addAppender(logAppender);
         // * Register events
         ss.getServer().getPluginManager().registerEvents(this, ss);
     }
 
     public final void disable() {
-        if(plugin != null) plugin.disable();
+        if(plugin != null) {
+            plugin.disable();
+            if(logAppender != null) {
+                logger.removeAppender(logAppender);
+                logAppender = null;
+            }
+        }
     }
 
     public final String getName() {
         return NAME;
-    }
-
-    public final void alertAdmin(final String alert) {
-        plugin.alertAdmin(alert);
     }
 
     @EventHandler

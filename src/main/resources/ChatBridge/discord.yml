@@ -8,8 +8,7 @@ botToken: ''
 # Type: snowflake
 channelId: ''
 
-# Admin user id who will receive important logs
-# Not an unsigned value makes admin alerts disabled
+# Admin text channel id that will receive logs
 #
 # Type: snowflake
 adminId: ''

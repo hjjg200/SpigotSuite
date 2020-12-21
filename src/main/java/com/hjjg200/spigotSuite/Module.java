@@ -6,5 +6,5 @@ public interface Module {
 
     public String getName();
     public void enable() throws Exception;
-    public void disable();
+    public void disable() throws Exception;
 }

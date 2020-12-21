@@ -28,28 +28,36 @@ public final class SpigotSuite extends JavaPlugin {
         modules.add(new InventoryGrave(this));
         modules.add(new StopWhenEmpty(this));
         modules.add(new ChatBridge(this));
-        modules.add(new Motd(this));
         modules.add(new Backup(this));
+        modules.add(new SimpleRcon(this));
         modules.removeIf(m -> {
-            boolean success = false;
+            boolean failed = true;
             try {
                 m.enable();
                 getLogger().log(Level.INFO, "Successfully enabled {0}", m.getName());
-                success = true;
+                failed = false;
             } catch(Module.DisabledException ex) {
                 getLogger().log(Level.INFO, "Ignored {0}", m.getName());
             } catch(Exception ex) {
                 getLogger().log(Level.SEVERE, "Failed to enable {0}", m.getName());
                 ex.printStackTrace();
             }
-            return success;
+            return failed;
         });
     }
 
     @Override
     public void onDisable() {
         // Disable modules and clear
-        for(final Module m : modules) m.disable();
+        for(final Module m : modules) {
+            try {
+                getLogger().log(Level.INFO, "Disabling {0}", m.getName());
+                m.disable();
+                getLogger().log(Level.INFO, "Disabled {0}", m.getName());
+            } catch(Exception ex) {
+                ex.printStackTrace();
+            }
+        }
         modules.clear();
     }
 

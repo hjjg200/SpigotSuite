@@ -199,6 +199,8 @@ public final class Backup implements Module, Listener {
         schedule(interval * TICK_MINUTE);
     }
 
+    // TODO: test doing scheduling backup when being disabled
+
     @EventHandler
     public void onServerLoad(ServerLoadEvent e) {
         // Check for file lock
@@ -218,11 +220,11 @@ public final class Backup implements Module, Listener {
             taskId = -1;
             try {
                 lock.createNewFile();
+                future = new CompletableFuture<>();
                 final Server server = ss.getServer();
                 final CommandSender cs = server.getConsoleSender();
                 server.dispatchCommand(cs, "save-all");
                 server.dispatchCommand(cs, "save-off");
-                future = new CompletableFuture<>();
                 CompletableFuture.runAsync(new AsyncTask());
             } catch(Exception ex) {
                 ss.getLogger().log(Level.SEVERE, "Failed to initiate the backup procedure!");
@@ -385,7 +387,8 @@ public final class Backup implements Module, Listener {
         // * File lock
         lock = new File(NAME + ".lock");
         // * Cache file is the cached index file after the backup
-        cacheDir = Resource.directory(ss, NAME, "cache");
+        cacheDir = new File(NAME + ".cache");
+        cacheDir.mkdirs();
 
         // Configuration
         enabled = config.getBoolean("enabled");

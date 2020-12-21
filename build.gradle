@@ -14,12 +14,12 @@ repositories {
         url "https://hub.spigotmc.org/nexus/content/repositories/public/"
     }
 }
-/*
+
 tasks.withType(JavaCompile) {
     options.compilerArgs << '-Xlint:unchecked'
     options.deprecation = true
 }
-*/
+
 dependencies {
     implementation platform("software.amazon.awssdk:bom:2.15.33")
     implementation "software.amazon.awssdk:sdk-core"
@@ -28,12 +28,20 @@ dependencies {
     implementation "org.apache.commons:commons-compress:1.20"
     implementation "commons-codec:commons-codec:1.15"
     implementation "net.dv8tion:JDA:4.2.0_168"
+    // Use the spigot's shaded ones
+    // * Spigot uses log4j 2.8.1
+    compileOnly "org.apache.logging.log4j:log4j-api:2.8.1"
+    compileOnly "org.apache.logging.log4j:log4j-core:2.8.1"
     compileOnly 'org.spigotmc:spigot-api:1.16.4-R0.1-SNAPSHOT'
+    // Tests
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.3.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.3.1'
 }
 
 shadowJar {
+    relocate 'org.apache.commons', 'ss.apache.commons'
+    relocate 'commons-code', 'ss.commons-codec'
+    relocate 'software.amazon', 'ss.amazon'
 }
 
 test {
