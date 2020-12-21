@@ -105,12 +105,6 @@ public final class ChatBridge implements Listener, Module {
     }
 
     @EventHandler
-    public void onPlayerAdvancementDone(final PlayerAdvancementDoneEvent e) {
-        String advancement = String.join("->", e.getAdvancement().getCriteria());
-        plugin.sendMessage(null, String.format("%s has achieved **%s**", e.getPlayer().getDisplayName(), advancement));
-    }
-
-    @EventHandler
     public void onPlayerJoin(final PlayerJoinEvent e) {
         plugin.sendMessage(null, ChatColor.stripColor(e.getJoinMessage()));
     }
