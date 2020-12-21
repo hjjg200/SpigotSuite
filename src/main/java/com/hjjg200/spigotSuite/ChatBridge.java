@@ -33,12 +33,19 @@ public final class ChatBridge implements Listener, Module {
     private Plugin plugin;
     private Logger logger = null;
     private Appender logAppender = null;
+    private Thread shutdownHook = null;
 
     public ChatBridge(final SpigotSuite ss) {
         this.ss = ss;
     }
 
     public final void enable() {
+        // If reloaded, run the shutdown hook and remove it
+        if(shutdownHook != null) {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            shutdownHook.run();
+            shutdownHook = null;
+        }
         // Configuration
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
         final String plName = config.getString("plugin");
@@ -74,7 +81,7 @@ public final class ChatBridge implements Listener, Module {
         plugin.enable();
         // * Admin log appender
         logger = (Logger)LogManager.getRootLogger();
-        logAppender = plugin.logAppender(Log4jUtils.getLayout());
+        logAppender = plugin.createLogAppender(Log4jUtils.getLayout());
         logger.addAppender(logAppender);
         // * Register events
         ss.getServer().getPluginManager().registerEvents(this, ss);
@@ -82,11 +89,17 @@ public final class ChatBridge implements Listener, Module {
 
     public final void disable() {
         if(plugin != null) {
-            plugin.disable();
-            if(logAppender != null) {
-                logger.removeAppender(logAppender);
-                logAppender = null;
-            }
+            shutdownHook = new Thread() {
+                @Override
+                public void run() {
+                    plugin.disable();
+                    if(logAppender != null) {
+                        logger.removeAppender(logAppender);
+                        logAppender = null;
+                    }
+                }
+            };
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
         }
     }
 

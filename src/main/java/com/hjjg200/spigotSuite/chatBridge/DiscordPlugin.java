@@ -5,6 +5,7 @@ import java.util.function.Consumer;
 import java.nio.charset.StandardCharsets;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.ArrayList;
 import java.io.Serializable;
 
 import org.apache.logging.log4j.core.Appender;
@@ -37,6 +38,7 @@ public final class DiscordPlugin implements Plugin {
     private transient String channelId;
     private transient String adminId;
     private Consumer<Event> listener;
+    private ArrayList<DiscordAppender> appenders = new ArrayList<DiscordAppender>();
 
     private final class MessageListener extends ListenerAdapter {
         @Override
@@ -68,7 +70,7 @@ public final class DiscordPlugin implements Plugin {
             super(DiscordAppender.class.getSimpleName(), null, layout);
         }
 
-        private void flush() {
+        public void flush() {
             if(buffer.length() == 0) return;
 
             final MessageChannel admin = jda.getTextChannelById(adminId);
@@ -122,6 +124,11 @@ public final class DiscordPlugin implements Plugin {
     }
 
     public void disable() {
+        // Ensure all appenders are flushed
+        for(final DiscordAppender appender : appenders) {
+            appender.flush();
+        }
+        appenders.clear();
         jda.shutdown();
         jda = null;
     }
@@ -136,8 +143,10 @@ public final class DiscordPlugin implements Plugin {
         to.sendMessage(String.format("%s%s", n, message)).queue();
     }
 
-    public final Appender logAppender(final Layout<? extends Serializable> layout) {
-        return new DiscordAppender(layout);
+    public final Appender createLogAppender(final Layout<? extends Serializable> layout) {
+        final DiscordAppender appender =  new DiscordAppender(layout);
+        appenders.add(appender);
+        return appender;
     }
 
 }

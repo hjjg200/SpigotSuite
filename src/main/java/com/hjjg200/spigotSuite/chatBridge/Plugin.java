@@ -28,7 +28,7 @@ public interface Plugin {
     public void disable();
     public void subscribeEvent(final Consumer<Event> listener);
     public void sendMessage(String name, String message);
-    public Appender logAppender(Layout<? extends Serializable> layout);
+    public Appender createLogAppender(Layout<? extends Serializable> layout);
     public String getName();
 
 }
