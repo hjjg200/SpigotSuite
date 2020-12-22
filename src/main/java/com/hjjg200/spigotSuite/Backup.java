@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.io.FileUtils;
 
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
@@ -288,6 +289,7 @@ public final class Backup implements Module, Listener {
                 sources,
                 new File(folderTempDir, version + TAR),
                 entry -> {
+                    if(entry.isFile() == false) return false;
                     final String key = DigestUtils.md5Hex(entry.getName());
                     final String md5 = entry.md5();
                     md5s.set(key, md5);
@@ -320,26 +322,23 @@ public final class Backup implements Module, Listener {
             boolean success = false;
             try {
                 System.out.println(tempDir.getPath());
+                tempDir.mkdirs();
                 try {
                     for(final World world : ss.getServer().getWorlds()) {
                         folder(new File[]{world.getWorldFolder()}, String.format("%s_%s", world.getName(), world.getUID()), cycleLength);
                     }
-                    success &= true;
+                    success = success && true;
                 } catch(Exception ex) {
                     ex.printStackTrace();
                 }
                 try {
                     folder(new File[]{new File(PLUGINS)}, PLUGINS, -1);
                     folder(resources, RESOURCES, -1);
-                    success &= true;
+                    success = success && true;
                 } catch(Exception ex) {
                     ex.printStackTrace();
                 }
-                // Empty temp directory
-                Files.walk(tempDir.toPath())
-                    .map(path -> path.toFile())
-                    .filter(file -> file.isFile())
-                    .forEach(file -> file.delete());
+                FileUtils.deleteDirectory(tempDir);
             } catch(Exception ex) {
                 ex.printStackTrace();
             }

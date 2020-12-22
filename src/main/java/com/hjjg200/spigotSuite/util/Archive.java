@@ -112,7 +112,6 @@ public final class Archive extends File {
             // Walk
             final Iterator<Entry> it = Files.walk(source.toPath())
                 .map(path -> new Entry(path.toFile(), parent.relativize(path).toString()))
-                .filter(entry -> entry.isFile())
                 .filter(filter)
                 .iterator();
             while(true) {

@@ -82,6 +82,7 @@ public final class ChatBridge implements Listener, Module {
         // * Admin log appender
         logger = (Logger)LogManager.getRootLogger();
         logAppender = plugin.createLogAppender(Log4jUtils.getLayout());
+        logAppender.start();
         logger.addAppender(logAppender);
         // * Register events
         ss.getServer().getPluginManager().registerEvents(this, ss);
@@ -92,11 +93,12 @@ public final class ChatBridge implements Listener, Module {
             shutdownHook = new Thread() {
                 @Override
                 public void run() {
-                    plugin.disable();
                     if(logAppender != null) {
                         logger.removeAppender(logAppender);
+                        logAppender.stop();
                         logAppender = null;
                     }
+                    plugin.disable();
                 }
             };
             Runtime.getRuntime().addShutdownHook(shutdownHook);

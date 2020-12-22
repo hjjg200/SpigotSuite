@@ -26,6 +26,7 @@ dependencies {
     implementation "software.amazon.awssdk:s3"
     implementation "software.amazon.awssdk:regions"
     implementation "org.apache.commons:commons-compress:1.20"
+    implementation "commons-io:commons-io:2.8.0"
     implementation "commons-codec:commons-codec:1.15"
     implementation "net.dv8tion:JDA:4.2.0_168"
     // Use the spigot's shaded ones
@@ -40,8 +41,8 @@ dependencies {
 
 shadowJar {
     relocate 'org.apache.commons', 'ss.apache.commons'
+    relocate 'commons-io', 'ss.commons-io'
     relocate 'commons-code', 'ss.commons-codec'
-    relocate 'software.amazon', 'ss.amazon'
 }
 
 test {
