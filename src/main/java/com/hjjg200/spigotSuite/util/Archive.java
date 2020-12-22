@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.function.Predicate;
+import java.util.function.Consumer;
 import java.util.Iterator;
 import java.security.MessageDigest;
 import java.security.DigestOutputStream;
@@ -42,14 +43,30 @@ public final class Archive extends File {
     // public File(final URI)
 
     public final static class Entry extends TarArchiveEntry {
-        private final File file;
+        private File file = null;
+        private InputStream in = null;
         public Entry(final File file, final String name) {
             super(file, name);
             this.file = file;
         }
+        public Entry(final InputStream in, final String name) {
+            super(name);
+            this.in = in;
+        }
+        public Entry(final TarArchiveEntry tarEntry, final TarArchiveInputStream in) {
+            super(tarEntry.getName());
+            this.in = in;
+        }
         public final String md5() {
             try {
-                return DigestUtils.md5Hex(new BufferedInputStream(Files.newInputStream(file.toPath())));
+                InputStream stream;
+                if(file != null) {
+                    stream = Files.newInputStream(file.toPath());
+                } else {
+                    in.reset();
+                    stream = in;
+                }
+                return DigestUtils.md5Hex(new BufferedInputStream(stream));
             } catch(Exception ex) {
                 ex.printStackTrace();
             }
@@ -57,10 +74,23 @@ public final class Archive extends File {
         }
     }
 
-    private volatile long _count;
-    public synchronized long count() {
-        return _count;
+    public final void forEach(Consumer<Entry> consumer) {
+        try {
+            final TarArchiveInputStream is = new TarArchiveInputStream(new BufferedInputStream(new FileInputStream(this)));
+            while(true) {
+                final TarArchiveEntry entry = is.getNextTarEntry();
+                if(entry == null) break;
+                // Ensure parent directories
+                consumer.accept(new Entry(entry, is));
+                // Each entry
+                if(entry.isDirectory()) continue;
+            }
+            is.close();
+        } catch(Exception ex) {
+            ex.printStackTrace();
+        }
     }
+
     public final synchronized void unpack() throws Exception {
         _unpack(null);
     }
@@ -71,7 +101,6 @@ public final class Archive extends File {
         // Default values
         if(parent == null) parent = this.getParentFile();
         // Start
-        _count = 0;
         final TarArchiveInputStream is = new TarArchiveInputStream(new BufferedInputStream(new FileInputStream(this)));
         while(true) {
             final TarArchiveEntry entry = is.getNextTarEntry();
@@ -81,7 +110,6 @@ public final class Archive extends File {
             file.getParentFile().mkdirs();
             // Each entry
             if(file.isDirectory()) continue;
-            _count++;
             Files.copy(is, file.toPath());
         }
         is.close();
@@ -103,7 +131,6 @@ public final class Archive extends File {
         tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
         tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
         // Archive
-        archive._count = 0;
         for(final File source : sources) {
             File parentFile = source.getParentFile();
             final Path parent = parentFile == null
@@ -120,7 +147,6 @@ public final class Archive extends File {
                     tar.putArchiveEntry(entry);
                     Files.copy(entry.getFile().toPath(), tar);
                     tar.closeArchiveEntry();
-                    archive._count++;
                 } catch(NoSuchElementException ex) {
                     break;
                 } catch(Exception ex) {

@@ -73,8 +73,7 @@ public final class DiscordPlugin implements Plugin {
         public void flush() {
             if(buffer.length() == 0) return;
 
-            final MessageChannel admin = jda.getTextChannelById(adminId);
-            admin.sendMessage(buffer).queue();
+            sendMessageToTextChannel(adminId, buffer);
             buffer = "";
         }
 
@@ -137,10 +136,16 @@ public final class DiscordPlugin implements Plugin {
         this.listener = listener;
     }
 
+    private final void sendMessageToTextChannel(final String id, String message) {
+        if(message.length() > JDA_MAX_LENGTH) {
+            message = message.substring(0, JDA_MAX_LENGTH);
+        }
+        jda.getTextChannelById(id).sendMessage(message).queue();
+    }
+
     public final void sendMessage(final String name, final String message) {
-        final String n = name == null ? "" : "**[" + name + "]** ";
-        final MessageChannel to = jda.getTextChannelById(channelId);
-        to.sendMessage(String.format("%s%s", n, message)).queue();
+        final String n = name == null ? "" : "` " + name + " ` ";
+        sendMessageToTextChannel(channelId, String.format("%s%s", n, message));
     }
 
     public final Appender createLogAppender(final Layout<? extends Serializable> layout) {

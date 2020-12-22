@@ -69,11 +69,13 @@ public final class SimpleRcon implements Module {
                             false,
                             true);
 
+                        appender.start();
                         logger.addAppender(appender);
                         final Future<Void> future = ss.getServer().getScheduler().callSyncMethod(ss, new SyncTask(message));
                         future.get();
                         socket.close();
                         logger.removeAppender(appender);
+                        appender.stop();
                     } catch(Exception ex) {
                         continue;
                     }

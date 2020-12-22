@@ -2,19 +2,32 @@ package com.hjjg200.spigotSuite;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Collection;
 import java.util.Timer;
-import java.util.TimerTask;
 import java.util.logging.Level;
+import java.util.Iterator;
 import java.util.concurrent.Semaphore;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
+import java.util.function.BiConsumer;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.DigestOutputStream;
+import java.util.stream.Stream;
 
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -26,10 +39,13 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.Delete;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
@@ -47,6 +63,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.server.ServerLoadEvent;
+import org.bukkit.plugin.IllegalPluginAccessException;
+import org.bukkit.ChatColor;;
 
 import com.hjjg200.spigotSuite.util.Archive;
 import com.hjjg200.spigotSuite.util.Resource;
@@ -58,6 +76,7 @@ final class S3Short {
     private final String prefix;
     private final GetObjectRequest.Builder getObjectBuilder;
     private final PutObjectRequest.Builder putObjectBuilder;
+    private final DeleteObjectsRequest.Builder deleteObjectsBuilder;
 
     public S3Short(final Region region, final String bucket, final String prefix) {
         client = S3Client.builder()
@@ -69,6 +88,7 @@ final class S3Short {
 
         getObjectBuilder = GetObjectRequest.builder().bucket(bucket);
         putObjectBuilder = PutObjectRequest.builder().bucket(bucket);
+        deleteObjectsBuilder = DeleteObjectsRequest.builder().bucket(bucket);
     }
 
     private final static String contentTypeOf(final String key) {
@@ -87,16 +107,29 @@ final class S3Short {
         return client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
     }
 
+    private final String process(final String key) {
+        return prefix + key;
+    }
+
     public final GetObjectResponse getObject(final String key, final File file) throws Exception {
         return client.getObject(
-            getObjectBuilder.key(prefix + key).build(),
+            getObjectBuilder.key(process(key)).build(),
             file.toPath());
     }
 
     public final PutObjectResponse putObject(final String key, final File file) throws Exception {
         return client.putObject(
-            putObjectBuilder.key(prefix + key).contentType(contentTypeOf(key)).build(),
+            putObjectBuilder.key(process(key)).contentType(contentTypeOf(key)).build(),
             file.toPath());
+    }
+
+    public final DeleteObjectsResponse deleteObjects(final Collection<String> keys) throws Exception {
+        final ArrayList<ObjectIdentifier> identifiers = new ArrayList<ObjectIdentifier>();
+        for(final String key : keys) {
+            identifiers.add(ObjectIdentifier.builder().key(process(key)).build());
+        }
+        final Delete delete = Delete.builder().objects(identifiers).build();
+        return client.deleteObjects(deleteObjectsBuilder.delete(delete).build());
     }
 
 }
@@ -105,10 +138,10 @@ public final class Backup implements Module, Listener {
 
     private final static String NAME = Backup.class.getSimpleName();
     private final static long TICK_MINUTE = 20L * 60L;
-    private final static String UTF_8 = "UTF-8";
     private final static String INDEX = "_index";
     private final static String SIZE = "size";
     private final static String VERSIONS = "versions";
+    private final static String VERSIONS_INFO = "versionsInfo";
     private final static String PLUGINS = "plugins";
     private final static String RESOURCES = "resources";
     private final static String TAR = ".tar";
@@ -118,13 +151,13 @@ public final class Backup implements Module, Listener {
     private final SpigotSuite ss;
     private final BukkitScheduler scheduler;
     private File lock;
-    private volatile CompletableFuture<Void> future;
+    private Semaphore mutex = new Semaphore(1);
+    private CompletableFuture<Void> future;
     private boolean enabled;
-    private final AtomicBoolean scheduled = new AtomicBoolean(false);
-    private final AtomicBoolean running = new AtomicBoolean(false);
     private int taskId = -1;
     private long interval;
     private int cycleLength;
+    private int maxCycles;
     private File[] resources;
     private File tempDir;
     private File cacheDir;
@@ -167,31 +200,244 @@ public final class Backup implements Module, Listener {
         }
     }
 
-    private final class CommandBackup implements CommandExecutor {
+    private final class CommandBackupInfo implements CommandExecutor {
         @Override
         public boolean onCommand(final CommandSender sender, final Command command, final String label, final String[] args) {
-            if(args.length == 0) return false;
 
-            switch(args[0]) {
-            case "info":
-                if(!(sender instanceof Player)) return true;
-                final Player player = (Player)sender;
-                for(final File worldDir : cacheDir.listFiles()) {
-                    if(!worldDir.isDirectory()) continue;
-                    final YamlConfiguration index = YamlConfiguration.loadConfiguration(new File(worldDir, INDEX + YML));
-                    final String worldName = worldDir.getName();
-                    player.sendMessage("# " + worldName);
-                    player.sendMessage(String.format("Size: %.2f GB", index.getDouble("size") / 1e+3));
-                    player.sendMessage("Versions:");
-                    for(final String version : index.getStringList(VERSIONS)) {
-                        player.sendMessage("- " + version);
-                    }
-                    player.sendMessage("");
+            final String type;
+            if(args.length > 0) {
+                switch(args[0]) {
+                case "all":
+                case "size":
+                    break;
+                default:
+                    return false;
                 }
-                break;
+                type = args[0];
+            } else {
+                type = "size";
+            }
+
+            // Overall info
+            sender.sendMessage(ChatColor.DARK_AQUA + "Backup Summary" + ChatColor.RESET);
+            if(enabled) {
+                sender.sendMessage(String.format("interval: %d minutes", interval));
+                sender.sendMessage(String.format("cycleLength: %d", cycleLength));
+                sender.sendMessage(String.format("maxCycles: %d", maxCycles));
+            } else {
+                sender.sendMessage(ChatColor.YELLOW + "Backup is currently disabled!" + ChatColor.RESET);
+            }
+
+            // Specific info
+            for(final File dir : cacheDir.listFiles()) {
+                if(!dir.isDirectory()) continue;
+
+                sender.sendMessage("");
+
+                final YamlConfiguration index = YamlConfiguration.loadConfiguration(new File(dir, INDEX + YML));
+                final String name = dir.getName();
+                sender.sendMessage(ChatColor.GREEN + "[" + name + "]" + ChatColor.RESET);
+                // Print summary
+                final List<String> versionStrings = index.getStringList(VERSIONS);
+                final ConfigurationSection versionsInfo = index.getConfigurationSection(VERSIONS_INFO);
+                // * Size
+                double size = 0.0d;
+                for(final String vstr : versionsInfo.getKeys(false)) {
+                    final ConfigurationSection info = versionsInfo.getConfigurationSection(vstr);
+                    size += info.getDouble(SIZE);
+                }
+                size /= 1e+3;
+                sender.sendMessage("Size: " + String.format("%.2f GB", size));
+                // * Latest backup
+                sender.sendMessage("Latest backup: "
+                                   + ChatColor.AQUA
+                                   + versionStrings.get(versionStrings.size() - 1)
+                                   + ChatColor.RESET);
+                // * Version list
+                if("all".equals(type)) {
+                    sender.sendMessage(String.format("(%d versions)", versionStrings.size()));
+                    for(final String vstr : versionStrings) {
+                        sender.sendMessage(ChatColor.GRAY + "- " + vstr + ChatColor.RESET);
+                    }
+                }
             }
 
             return true;
+        }
+    }
+
+    // File only checksum for tar archives
+    private final class CommandBackupChecksum implements CommandExecutor {
+        @Override
+        public boolean onCommand(final CommandSender sender, final Command command, final String label, final String[] args) {
+
+            if(args.length == 0) return false;
+
+            final Archive archive = new Archive(args[0]);
+            if(!archive.exists()) {
+                sender.sendMessage(ChatColor.YELLOW + "The specified file does not exist" + ChatColor.RESET);
+                return true;
+            }
+
+            final List<String> sorted = new ArrayList<String>();
+            final Map<String, String> checksums = new HashMap<String, String>();
+            archive.forEach(entry -> {
+                if(entry.isFile() == false) return;
+                final String name = entry.getName();
+                sorted.add(name);
+                checksums.put(name, entry.md5());
+            });
+            sorted.sort(null);
+
+            // Digest
+            final DigestOutputStream digest = new DigestOutputStream(
+                new ByteArrayOutputStream(), DigestUtils.getSha1Digest());
+            try {
+                for(int i = 0; i < sorted.size(); i++) {
+                    digest.write(checksums.get(sorted.get(i)).getBytes(StandardCharsets.UTF_8));
+                }
+            } catch(Exception ex) {
+                ex.printStackTrace();
+                sender.sendMessage(ChatColor.YELLOW + "Failed evaluation" + ChatColor.RESET);
+                return false;
+            }
+
+            // Result
+            final String checksum = new String(new Hex(StandardCharsets.UTF_8).encode(digest.getMessageDigest().digest()), StandardCharsets.UTF_8);
+
+            sender.sendMessage(ChatColor.GREEN + args[0] + ChatColor.RESET);
+            sender.sendMessage(checksum);
+            sender.sendMessage(ChatColor.GRAY + "* This is the checksum of concatenation of hex representations of each entry's md5 checksum. Entries are sorted by its name");
+
+            // Compare with current server's file
+            Path parent = Paths.get("./"); // default parent
+            Stream<Path> stream = null;
+            if(args.length >= 2) {
+Switch:
+                switch(args[1]) {
+                case "plugins":
+                    try {
+                        stream = Files.walk(Paths.get(PLUGINS));
+                    } catch(Exception ex) {
+                        ex.printStackTrace();
+                        sender.sendMessage(ChatColor.YELLOW + "Exception occurred" + ChatColor.RESET);
+                        return true;
+                    }
+                    break;
+                case "resources":
+                    final Stream.Builder<Path> builder = Stream.builder();
+                    for(final File resource : resources) {
+                        builder.accept(resource.toPath());
+                    }
+                    stream = builder.build();
+                    break;
+                case "world":
+                    if(args.length < 3) {
+                        sender.sendMessage(ChatColor.YELLOW + "World name must be supplied" + ChatColor.RESET);
+                        return false;
+                    }
+                    final String worldName = args[2];
+                    for(final World world : ss.getServer().getWorlds()) {
+                        if(world.getName().equals(worldName)) {
+                            try {
+                                final File dir = world.getWorldFolder();
+                                parent = dir.getParentFile().toPath();
+                                stream = Files.walk(dir.toPath());
+                            } catch(Exception ex) {
+                                ex.printStackTrace();
+                                sender.sendMessage(ChatColor.YELLOW + "Exception occurred" + ChatColor.RESET);
+                                return true;
+                            }
+                            break Switch;
+                        }
+                    }
+                    // World not found
+                    sender.sendMessage(ChatColor.YELLOW + "World of the supplied name was not found" + ChatColor.RESET);
+                    return false;
+                default:
+                    sender.sendMessage(ChatColor.YELLOW + "Wrong backup type is supplied" + ChatColor.RESET);
+                    return false;
+                }
+
+                // Iterate
+                int entireCount = 0;
+                long entireSize = 0L;
+                final List<String> dissimilarFiles = new ArrayList<String>();
+                int similarCount = 0;
+                long similarSize = 0L;
+                final List<String> notFoundFiles = new ArrayList<String>();
+                final Set<String> surplusFiles = new HashSet<String>(checksums.keySet());
+                final Iterator<Path> iterator = stream
+                    .filter(each -> Files.isRegularFile(each))
+                    .iterator();
+                Iterable<Path> iterable = () -> iterator;
+                try {
+                    for(final Path path : iterable) {
+                        final long size = Files.size(path);
+
+                        entireCount++;
+                        entireSize += size;
+
+                        final String key = parent.relativize(path).toString();
+                        final String md5_1 = checksums.get(key);
+                        if(md5_1 == null) {
+                            notFoundFiles.add(key);
+                            continue;
+                        }
+
+                        surplusFiles.remove(key);
+
+                        final String md5_0 = DigestUtils.md5Hex(Files.newInputStream(path));
+                        if(md5_0.equals(md5_1)) {
+                            similarCount++;
+                            similarSize += size;
+                        } else {
+                            dissimilarFiles.add(key);
+                        }
+                    }
+                } catch(Exception ex) {
+                    ex.printStackTrace();
+                    sender.sendMessage(ChatColor.YELLOW + "Exception occurred" + ChatColor.RESET);
+                    return true;
+                }
+
+                // Print
+                sender.sendMessage("");
+                sender.sendMessage(ChatColor.AQUA + "[Likeness]" + ChatColor.RESET);
+                final boolean exact = similarCount == entireCount
+                                      && notFoundFiles.size() == 0
+                                      && surplusFiles.size() == 0;
+                final ChatColor color = exact ? ChatColor.GREEN : ChatColor.YELLOW;
+                sender.sendMessage(color + (exact
+                                   ? "The supplied tar archive is entirely identical to current files"
+                                   : "The supplied tar archive is not identical"));
+                sender.sendMessage(color + String.format("%d", similarCount)
+                                   + ChatColor.GRAY + String.format("/%d", entireCount)
+                                   + ChatColor.RESET + " files"
+                                   + ChatColor.GRAY + " ("
+                                   + color + String.format("%.2f", (double)similarSize / (double)entireSize * 100.0d)
+                                   + ChatColor.RESET + "%"
+                                   + ChatColor.GRAY + ")"
+                                   + ChatColor.RESET);
+
+                if(!exact) {
+                    final BiConsumer<String, Collection<String>> consumer = (expr, collection) -> {
+                        if(collection.size() == 0) return;
+                        sender.sendMessage("");
+                        sender.sendMessage(color + String.format("(%d %s)", collection.size(), expr) + ChatColor.RESET);
+                        sender.sendMessage(ChatColor.GRAY
+                                           + String.join(ChatColor.RESET + "\n" + ChatColor.GRAY, collection)
+                                           + ChatColor.RESET);
+                    };
+                    consumer.accept("dissimilar files", dissimilarFiles);
+                    consumer.accept("files not found", notFoundFiles);
+                    consumer.accept("surplus files", surplusFiles);
+                }
+
+            }
+
+            return true;
+
         }
     }
 
@@ -216,12 +462,14 @@ public final class Backup implements Module, Listener {
     private final class BackupTask implements Runnable {
         @Override
         public void run() {
-            ss.getLogger().info("Starting to backup...");
-            scheduled.set(false);
-            taskId = -1;
             try {
+                mutex.acquire();
+                ss.getLogger().info("Starting to backup...");
+                taskId = -1;
                 lock.createNewFile();
                 future = new CompletableFuture<>();
+                mutex.release();
+                // Save and start
                 final Server server = ss.getServer();
                 final CommandSender cs = server.getConsoleSender();
                 server.dispatchCommand(cs, "save-all");
@@ -235,11 +483,8 @@ public final class Backup implements Module, Listener {
     }
 
     private final class AsyncTask implements Runnable {
-        private final LocalDateTime time = LocalDateTime.now();
 
-        /*
-         * -1 as folderCycleLength makes backup infinite incremental
-         */
+        private final LocalDateTime time = LocalDateTime.now();
         private final void folder(final File[] sources, final String name, final int folderCycleLength) throws Exception {
 
             final UnaryOperator<String> format = base -> name + "/" + base;
@@ -256,11 +501,15 @@ public final class Backup implements Module, Listener {
                 s3Short.getObject(format.apply(indexName), indexFile);
                 index = YamlConfiguration.loadConfiguration(indexFile);
             } catch(NoSuchKeyException ex) {
+                // Create new index file
+                index.createSection(VERSIONS);
+                index.createSection(VERSIONS_INFO);
             } catch(Exception ex) {
                 throw ex;
             }
             // * Versions
             List<String> versionStrings = index.getStringList(VERSIONS);
+            final ConfigurationSection versionsInfo = index.getConfigurationSection(VERSIONS_INFO);
 
             // Determine the version for this backup
             final AtomicBoolean isFull = new AtomicBoolean(true);
@@ -285,6 +534,7 @@ public final class Backup implements Module, Listener {
             }
 
             // Archive accordingly
+            final AtomicInteger count = new AtomicInteger(0);
             final Archive archive = Archive.pack(
                 sources,
                 new File(folderTempDir, version + TAR),
@@ -293,22 +543,58 @@ public final class Backup implements Module, Listener {
                     final String key = DigestUtils.md5Hex(entry.getName());
                     final String md5 = entry.md5();
                     md5s.set(key, md5);
-                    return isFull.get() || !md5.equals(headMd5s.getString(key));
+                    final boolean result = isFull.get() || !md5.equals(headMd5s.getString(key));
+                    if(result) count.addAndGet(1);
+                    return result;
                 });
 
-            if(archive.count() > 0) {
-                s3Short.putObject(format.apply(version.toString() + TAR), archive);
-                s3Short.putObject(format.apply(version.toString() + TAR + SHA1), new File(archive.getPath() + SHA1));
+            if(count.get() > 0) {
+                final String vstr = version.toString();
+                // Put files
+                // * Tar, checksum, index
                 final File md5sFile = new File(folderTempDir, version.toString() + YML);
                 md5s.save(md5sFile);
-                s3Short.putObject(format.apply(version.toString() + YML), md5sFile);
-
-                index.set(SIZE, index.getLong(SIZE) + Files.size(archive.toPath()) / 1e+6);
-                versionStrings.add(version.toString());
+                s3Short.putObject(format.apply(vstr + TAR), archive);
+                s3Short.putObject(format.apply(vstr + TAR + SHA1), new File(archive.getPath() + SHA1));
+                s3Short.putObject(format.apply(vstr + YML), md5sFile);
+                // * Add version
+                versionStrings.add(vstr);
+                versionsInfo.createSection(vstr);
+                final ConfigurationSection info = versionsInfo.getConfigurationSection(vstr);
+                info.set(SIZE, Files.size(archive.toPath()) / 1e+6);
+                // Check for cycle count
+                int cycleCount = 0;
+                for(final String v : versionStrings) {
+                    if(new Version(v).type().equals(Version.Type.FULL)) cycleCount++;
+                }
+                if(maxCycles > 0) {
+                    for(; cycleCount > maxCycles; cycleCount--) {
+                        // Files to delete
+                        final ArrayList<String> versionsToDelete = new ArrayList<String>();
+                        final ArrayList<String> filesToDelete = new ArrayList<String>();
+                        for(final String each : versionStrings) {
+                            if(new Version(each).type().equals(Version.Type.FULL)
+                                && filesToDelete.size() > 0)
+                                break;
+                            versionsToDelete.add(each);
+                            filesToDelete.add(format.apply(each + TAR));
+                            filesToDelete.add(format.apply(each + TAR + SHA1));
+                            filesToDelete.add(format.apply(each + YML));
+                        }
+                        // Delete request
+                        s3Short.deleteObjects(filesToDelete);
+                        // Remove from index file
+                        for(final String toDelete : versionsToDelete) {
+                            versionStrings.remove(toDelete);
+                            versionsInfo.set(toDelete, null);
+                        }
+                    }
+                }
+                // Finalize backup
                 index.set(VERSIONS, versionStrings);
+                index.set(VERSIONS_INFO, versionsInfo);
                 index.save(indexFile);
                 s3Short.putObject(format.apply(indexName), indexFile);
-
                 final File folderCacheDir = new File(cacheDir, name);
                 index.save(new File(folderCacheDir, INDEX + YML));
 
@@ -319,58 +605,75 @@ public final class Backup implements Module, Listener {
         }
         @Override
         public void run() {
-            boolean success = false;
+            boolean success = true;
             try {
-                System.out.println(tempDir.getPath());
                 tempDir.mkdirs();
                 try {
                     for(final World world : ss.getServer().getWorlds()) {
                         folder(new File[]{world.getWorldFolder()}, String.format("%s_%s", world.getName(), world.getUID()), cycleLength);
                     }
-                    success = success && true;
                 } catch(Exception ex) {
+                    success = false;
                     ex.printStackTrace();
                 }
                 try {
                     folder(new File[]{new File(PLUGINS)}, PLUGINS, -1);
                     folder(resources, RESOURCES, -1);
-                    success = success && true;
                 } catch(Exception ex) {
+                    success = false;
                     ex.printStackTrace();
                 }
                 FileUtils.deleteDirectory(tempDir);
             } catch(Exception ex) {
                 ex.printStackTrace();
             }
-            // unlock must be done async in order to prevent deadlock
-            scheduler.scheduleSyncDelayedTask(ss, new PostTask(success));
+            // After backup process
+            if(success) {
+                ss.getLogger().info("Backup successful");
+            }
+            try {
+                mutex.acquire();
+                lock.delete();
+                future.complete(null);
+                future = null;
+                mutex.release();
+                if(ss.getServer().getOnlinePlayers().size() > 0) {
+                    schedule(interval * TICK_MINUTE);
+                }
+            } catch(Exception ex) {
+                ex.printStackTrace();
+            }
+            // Post backup
+            try {
+                scheduler.scheduleSyncDelayedTask(ss, new PostTask());
+            } catch(IllegalPluginAccessException ex) {
+                // Try to dispatch command while being disabled
+            }
         }
     }
 
     // This task is run synchronously after everything is done
     private final class PostTask implements Runnable {
-        private final boolean success;
-        public PostTask(final boolean success) {
-            this.success = success;
-        }
         @Override
         public void run() {
-            if(success) {
-                ss.getLogger().info("Backup successful");
-            }
             final Server server = ss.getServer();
             server.dispatchCommand(server.getConsoleSender(), "save-on");
-            lock.delete();
-            running.set(false);
-            future.complete(null);
-            if(ss.getServer().getOnlinePlayers().size() > 0) schedule(interval * TICK_MINUTE);
         }
     }
 
     private final void schedule(final long later) {
-        if(running.compareAndSet(false, true)) {
-            taskId = scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), later);
-            scheduled.set(true);
+        try {
+            mutex.acquire();
+            if(taskId == -1 && future == null) {
+                try {
+                    taskId = scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), later);
+                } catch(IllegalPluginAccessException ex) {
+                    // Attempt to schedule when being disabled
+                }
+            }
+            mutex.release();
+        } catch(Exception ex) {
+            ex.printStackTrace();
         }
     }
 
@@ -396,6 +699,7 @@ public final class Backup implements Module, Listener {
         assert interval > 0 : "Interval must be above 0";
         cycleLength = config.getInt("cycleLength");
         assert cycleLength > 0 : "Cycle length must be above 0";
+        maxCycles = config.getInt("maxCycles");
         final List<File> resourcesList = new ArrayList<File>();
         for(final String resource : config.getStringList(RESOURCES)) {
             resourcesList.add(new File(resource));
@@ -424,23 +728,30 @@ public final class Backup implements Module, Listener {
         s3Short.headBucket();
 
         ss.getLogger().log(Level.INFO, "Backup is configured at every {0} minutes", interval);
-        ss.getCommand(NAME).setExecutor(new CommandBackup());
+        ss.getCommand(NAME + "info").setExecutor(new CommandBackupInfo());
+        ss.getCommand(NAME + "checksum").setExecutor(new CommandBackupChecksum());
         ss.getServer().getPluginManager().registerEvents(this, ss);
 
     }
 
     public final void disable() {
         try {
-            if(scheduled.compareAndSet(true, false)) {
+            mutex.acquire();
+            if(taskId != -1) {
                 scheduler.cancelTask(taskId);
+                mutex.release();
                 new BackupTask().run();
-            }
-            if(future != null) {
                 future.join();
+            } else if(future != null) {
+                mutex.release();
+                future.join();
+            } else {
+                mutex.release();
             }
         } catch(Exception ex) {
             ex.printStackTrace();
         }
+        new PostTask().run();
     }
 
     public final String getName() {
