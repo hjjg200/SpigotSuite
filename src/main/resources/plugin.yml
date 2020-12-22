@@ -9,7 +9,12 @@ commands:
     description: Show information about backups
     usage: /<command> [all/size]
     aliases: [binfo]
+    permission: spigotSuite
   backupchecksum:
     description: Evaluate entry-level file-only checksum for tar archive and if specified, compare it against current files
     usage: /<command> <tar_path> [plugins/resources/world <world_name>]
     aliases: [bcs, bchecksum, bsum]
+    permission: spigotSuite
+permissions:
+  spigotSuite:
+    default: op
