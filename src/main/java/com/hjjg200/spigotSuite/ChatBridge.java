@@ -4,7 +4,9 @@ import java.io.File;
 import java.io.OutputStream;
 import java.util.function.Consumer;
 
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
@@ -20,6 +22,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
+import org.bukkit.entity.Player;
 
 import com.hjjg200.spigotSuite.chatBridge.*;
 import com.hjjg200.spigotSuite.util.Log4jUtils;
@@ -32,6 +35,7 @@ public final class ChatBridge implements Listener, Module {
     private final SpigotSuite ss;
     private Plugin plugin;
     private Logger logger = null;
+    private LogListener logListener = null;
     private Appender logAppender = null;
     private Thread shutdownHook = null;
 
@@ -39,7 +43,7 @@ public final class ChatBridge implements Listener, Module {
         this.ss = ss;
     }
 
-    public final void enable() {
+    public final void enable() throws Exception {
         // If reloaded, run the shutdown hook and remove it
         if(shutdownHook != null) {
             Runtime.getRuntime().removeShutdownHook(shutdownHook);
@@ -49,7 +53,9 @@ public final class ChatBridge implements Listener, Module {
         // Configuration
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
         final String plName = config.getString("plugin");
-        if(plName.equals("none")) return;
+        if(plName.equals("none")) {
+            throw new Module.DisabledException();
+        }
         final File dataFolder = new File(ss.getDataFolder(), NAME);
         dataFolder.mkdirs();
         // * Plugin
@@ -71,8 +77,7 @@ public final class ChatBridge implements Listener, Module {
             plugin = new DiscordPlugin(plConfig);
             break;
         default:
-            ss.getLogger().severe("Attempt to use unknown chat plugin");
-            return;
+            throw new Exception("Attempted to use unknown chat plugin");
         }
         plugin.subscribeEvent(ev -> {
             ss.getServer().broadcastMessage(String.format(CHAT_NAME_FORMAT + "%s", ev.getDisplayName(),
@@ -86,27 +91,51 @@ public final class ChatBridge implements Listener, Module {
         logger.addAppender(logAppender);
         // * Register events
         ss.getServer().getPluginManager().registerEvents(this, ss);
+        logListener = new LogListener();
+        logListener.start();
+        logger.addAppender(logListener);
     }
 
     public final void disable() {
-        if(plugin != null) {
-            shutdownHook = new Thread() {
-                @Override
-                public void run() {
-                    if(logAppender != null) {
-                        logger.removeAppender(logAppender);
-                        logAppender.stop();
-                        logAppender = null;
-                    }
-                    plugin.disable();
-                }
-            };
-            Runtime.getRuntime().addShutdownHook(shutdownHook);
-        }
+        shutdownHook = new Thread() {
+            @Override
+            public void run() {
+                // Disable plugin
+                logger.removeAppender(logAppender);
+                logAppender.stop();
+                plugin.disable();
+                // Disable listener
+                logger.removeAppender(logListener);
+                logListener.stop();
+            }
+        };
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
     public final String getName() {
         return NAME;
+    }
+
+    // Handling events
+    private final class LogListener extends AbstractAppender {
+        public LogListener() {
+            super(NAME + ".LogListener", null, null);
+        }
+        @Override
+        public void append(LogEvent e) {
+            if(e.getLevel().equals(Level.INFO)) {
+                final String message = e.getMessage().getFormattedMessage();
+                if(message.contains("has made the advancement")) {
+                    final String[] args = message.split(" ");
+                    for(final Player player : ss.getServer().getOnlinePlayers()) {
+                        if(player.getDisplayName().equals(args[0])) {
+                            plugin.sendMessage(null, message);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @EventHandler

@@ -2,6 +2,6 @@
 My personal Spigot plugin suite
 
 ## TODO
-* SIGTERM test
-* Backup max backup cycle
+* Backup timer and show it in info
+* Backup: check size of files to backup and check disk free space
 * Chunk pregenerator
