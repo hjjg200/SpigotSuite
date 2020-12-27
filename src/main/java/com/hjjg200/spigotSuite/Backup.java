@@ -2,6 +2,7 @@ package com.hjjg200.spigotSuite;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.ArrayList;
@@ -39,6 +40,15 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.UploadPartRequest;
+import software.amazon.awssdk.services.s3.model.UploadPartResponse;
+import software.amazon.awssdk.services.s3.model.CompletedPart;
+import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
@@ -76,6 +86,7 @@ final class S3Short {
     private final String prefix;
     private final GetObjectRequest.Builder getObjectBuilder;
     private final PutObjectRequest.Builder putObjectBuilder;
+    private final UploadPartRequest.Builder uploadPartBuilder;
     private final DeleteObjectsRequest.Builder deleteObjectsBuilder;
 
     public S3Short(final Region region, final String bucket, final String prefix) {
@@ -88,6 +99,7 @@ final class S3Short {
 
         getObjectBuilder = GetObjectRequest.builder().bucket(bucket);
         putObjectBuilder = PutObjectRequest.builder().bucket(bucket);
+        uploadPartBuilder = UploadPartRequest.builder().bucket(bucket);
         deleteObjectsBuilder = DeleteObjectsRequest.builder().bucket(bucket);
     }
 
@@ -121,6 +133,61 @@ final class S3Short {
         return client.putObject(
             putObjectBuilder.key(process(key)).contentType(contentTypeOf(key)).build(),
             file.toPath());
+    }
+
+    public final void multipartUpload(final String key, final Path path) throws Exception {
+
+        final String processedKey = process(key);
+        final long size = Files.size(path);
+        long partSize = (long)Math.max(
+                5 * 1024 * 1024,
+                Math.ceil((double)size / 10000.0d)); // Max upload parts
+
+        final CreateMultipartUploadRequest createRequest = CreateMultipartUploadRequest.builder()
+                .bucket(bucket)
+                .key(processedKey)
+                .contentType(contentTypeOf(processedKey))
+                .build();
+
+        final CreateMultipartUploadResponse createResponse = client.createMultipartUpload(createRequest);
+        final String uploadId = createResponse.uploadId();
+        final List<CompletedPart> completedParts = new ArrayList<CompletedPart>();
+
+        final InputStream in = Files.newInputStream(path);
+        long position = 0;
+        for(int i = 1; position < size; i++) {
+            partSize = Math.min(partSize, (size - position));
+            final UploadPartRequest partRequest = UploadPartRequest.builder()
+                    .bucket(bucket)
+                    .contentLength(partSize)
+                    .key(processedKey)
+                    .partNumber(i)
+                    .uploadId(uploadId)
+                    .build();
+            final UploadPartResponse partResponse = client.uploadPart(
+                    partRequest,
+                    RequestBody.fromInputStream(in, partSize));
+
+            completedParts.add(CompletedPart.builder()
+                    .partNumber(i)
+                    .eTag(partResponse.eTag())
+                    .build());
+
+            position += partSize;
+        }
+        in.close();
+
+        final CompletedMultipartUpload completedMultipart = CompletedMultipartUpload.builder()
+                .parts(completedParts)
+                .build();
+        final CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
+                .bucket(bucket)
+                .key(processedKey)
+                .uploadId(uploadId)
+                .multipartUpload(completedMultipart)
+                .build();
+        client.completeMultipartUpload(completeRequest);
+
     }
 
     public final DeleteObjectsResponse deleteObjects(final Collection<String> keys) throws Exception {
@@ -441,9 +508,17 @@ Switch:
         }
     }
 
+    private final class CommandBackupOverride implements CommandExecutor {
+        @Override
+        public boolean onCommand(final CommandSender sender, final Command command, final String label, final String[] args) {
+            schedule(0, true);
+            return true;
+        }
+    }
+
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent e) {
-        schedule(interval * TICK_MINUTE);
+        schedule(interval * TICK_MINUTE, false);
     }
 
     // TODO: test doing scheduling backup when being disabled
@@ -454,12 +529,16 @@ Switch:
         if(lock.exists()) {
             ss.getLogger().log(Level.SEVERE, "Backup file lock is found, doing an immediate backup");
             lock.delete();
-            schedule(0);
+            schedule(0, false);
         }
     }
 
     // This class is run synchronously
     private final class BackupTask implements Runnable {
+        private final boolean forceFull;
+        public BackupTask(final boolean forceFull) {
+            this.forceFull = forceFull;
+        }
         @Override
         public void run() {
             try {
@@ -474,7 +553,7 @@ Switch:
                 final CommandSender cs = server.getConsoleSender();
                 server.dispatchCommand(cs, "save-all");
                 server.dispatchCommand(cs, "save-off");
-                CompletableFuture.runAsync(new AsyncTask());
+                CompletableFuture.runAsync(new AsyncTask(forceFull));
             } catch(Exception ex) {
                 ss.getLogger().log(Level.SEVERE, "Failed to initiate the backup procedure!");
                 ex.printStackTrace();
@@ -483,6 +562,11 @@ Switch:
     }
 
     private final class AsyncTask implements Runnable {
+
+        private final boolean forceFull;
+        public AsyncTask(final boolean forceFull) {
+            this.forceFull = forceFull;
+        }
 
         private final LocalDateTime time = LocalDateTime.now();
         private final void folder(final File[] sources, final String name, final int folderCycleLength) throws Exception {
@@ -513,12 +597,14 @@ Switch:
 
             // Determine the version for this backup
             final AtomicBoolean isFull = new AtomicBoolean(true);
-            for(int i = versionStrings.size() - 1; i >= 0; i--) {
-                if(folderCycleLength > 0 && versionStrings.size() - i >= folderCycleLength) {
-                    break;
-                } else if(new Version(versionStrings.get(i)).type().equals(Version.Type.FULL)) {
-                    isFull.set(false);
-                    break;
+            if(forceFull == false) {
+                for(int i = versionStrings.size() - 1; i >= 0; i--) {
+                    if(folderCycleLength > 0 && versionStrings.size() - i >= folderCycleLength) {
+                        break;
+                    } else if(new Version(versionStrings.get(i)).type().equals(Version.Type.FULL)) {
+                        isFull.set(false);
+                        break;
+                    }
                 }
             }
             final Version version = new Version(time, isFull.get() ? Version.Type.FULL : Version.Type.INCREMENTAL);
@@ -554,7 +640,7 @@ Switch:
                 // * Tar, checksum, index
                 final File md5sFile = new File(folderTempDir, version.toString() + YML);
                 md5s.save(md5sFile);
-                s3Short.putObject(format.apply(vstr + TAR), archive);
+                s3Short.multipartUpload(format.apply(vstr + TAR), archive.toPath());
                 s3Short.putObject(format.apply(vstr + TAR + SHA1), new File(archive.getPath() + SHA1));
                 s3Short.putObject(format.apply(vstr + YML), md5sFile);
                 // * Add version
@@ -610,15 +696,17 @@ Switch:
                 tempDir.mkdirs();
                 try {
                     for(final World world : ss.getServer().getWorlds()) {
-                        folder(new File[]{world.getWorldFolder()}, String.format("%s_%s", world.getName(), world.getUID()), cycleLength);
+                        folder(new File[]{world.getWorldFolder()},
+                               String.format("%s_%s", world.getName(), world.getUID()),
+                               cycleLength);
                     }
                 } catch(Exception ex) {
                     success = false;
                     ex.printStackTrace();
                 }
                 try {
-                    folder(new File[]{new File(PLUGINS)}, PLUGINS, -1);
-                    folder(resources, RESOURCES, -1);
+                    folder(new File[]{new File(PLUGINS)}, PLUGINS, cycleLength);
+                    folder(resources, RESOURCES, cycleLength);
                 } catch(Exception ex) {
                     success = false;
                     ex.printStackTrace();
@@ -638,7 +726,7 @@ Switch:
                 future = null;
                 mutex.release();
                 if(ss.getServer().getOnlinePlayers().size() > 0) {
-                    schedule(interval * TICK_MINUTE);
+                    schedule(interval * TICK_MINUTE, false);
                 }
             } catch(Exception ex) {
                 ex.printStackTrace();
@@ -661,15 +749,17 @@ Switch:
         }
     }
 
-    private final void schedule(final long later) {
+    private final void schedule(final long later, final boolean override) {
         try {
             mutex.acquire();
             if(taskId == -1 && future == null) {
                 try {
-                    taskId = scheduler.scheduleSyncDelayedTask(ss, new BackupTask(), later);
+                    taskId = scheduler.scheduleSyncDelayedTask(ss, new BackupTask(override), later);
                 } catch(IllegalPluginAccessException ex) {
                     // Attempt to schedule when being disabled
                 }
+            } else if(override && taskId != -1 && future == null) {
+                taskId = scheduler.scheduleSyncDelayedTask(ss, new BackupTask(true), later);
             }
             mutex.release();
         } catch(Exception ex) {
@@ -730,6 +820,7 @@ Switch:
         ss.getLogger().log(Level.INFO, "Backup is configured at every {0} minutes", interval);
         ss.getCommand(NAME + "info").setExecutor(new CommandBackupInfo());
         ss.getCommand(NAME + "checksum").setExecutor(new CommandBackupChecksum());
+        ss.getCommand(NAME + "override").setExecutor(new CommandBackupOverride());
         ss.getServer().getPluginManager().registerEvents(this, ss);
 
     }
@@ -740,7 +831,7 @@ Switch:
             if(taskId != -1) {
                 scheduler.cancelTask(taskId);
                 mutex.release();
-                new BackupTask().run();
+                new BackupTask(false).run();
                 future.join();
             } else if(future != null) {
                 mutex.release();

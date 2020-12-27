@@ -15,6 +15,11 @@ commands:
     usage: /<command> <tar_path> [plugins/resources/world <world_name>]
     aliases: [bcs, bchecksum, bsum]
     permission: spigotSuite
+  backupoverride:
+    description: Executes a force-full backup immediately
+    usage: /<command>
+    aliases: [boverride]
+    permission: spigotSuite
 permissions:
   spigotSuite:
     default: op
