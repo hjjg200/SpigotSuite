@@ -2,107 +2,177 @@
 # InventoryGrave config
 InventoryGrave:
 
-    # The sign's 3rd and 4th lines will be date formatted as below
-    # Refer to DateTimeFormatter javadoc for patterns
-    datePatterns:
-        - 'MMM d, uuuu' # 3rd line
-        - 'h:mm a' # 4th line
+  # The sign's 3rd and 4th lines will be date formatted as below
+  # Refer to DateTimeFormatter javadoc for patterns
+  datePatterns:
+    - 'MMM d, uuuu' # 3rd line
+    - 'h:mm a' # 4th line
 
-    # Default preserved slots are quick slots, armors, and off-hand
-    keptSlots:
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 36, 37, 38, 39, 40]
+  # Default preserved slots are quick slots, armors, and off-hand
+  keptSlots:
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 36, 37, 38, 39, 40]
 
 # StopWhenEmpty configuration
 StopWhenEmpty:
 
-    # In how many minutes a server will shut down since it had 0 players
-    #
-    # Unit: minutes
-    # Default: 20
-    wait: 20
+  # In how many minutes a server will shut down since it had 0 players
+  #
+  # Unit: minutes
+  # Default: 20
+  wait: 20
 
-    # If you want to make sure the server shutdown does not hang and
-    # the script is run afterwards, set this value above 0.
-    # The plugin will have the JVM halt after N minutes since
-    # its disabling
-    #
-    # Be generous about the amount, since Runtime.halt will forcibly
-    # terminate the JVM and its threads
-    #
-    # Unit: minutes
-    # Default: 0
-    emergencyThreshold: 0
+  # If you want to make sure the server shutdown does not hang and
+  # the script is run afterwards, set this value above 0.
+  # The plugin will have the JVM halt after N minutes since
+  # its disabling
+  #
+  # Be generous about the amount, since Runtime.halt will forcibly
+  # terminate the JVM and its threads
+  #
+  # Unit: minutes
+  # Default: 0
+  emergencyThreshold: 0
 
-    # Arguments that will be run when the JVM is shut down
-    scriptArgs:
-        - 'bash'
-        - '-c'
-        - 'echo hello'
+  # Arguments that will be run when the JVM is shut down
+  scriptArgs:
+      - 'bash'
+      - '-c'
+      - 'echo hello'
 
 # ChatBridge configuration
 ChatBridge:
 
-    # Specify the plugin to use for ChatBridge
-    # Available plugins: [none, discord]
+  # Specify the plugin to use for ChatBridge
+  # Available plugins: [none, discord]
+  #
+  # Default: none
+  plugin: none
+
+  discord:
+
+    # Bot token of the Discord bot
+    botToken: ''
+
+    # Channel to send to and receive messages from
     #
-    # Default: none
-    plugin: none
+    # Type: snowflake
+    channelId: ''
+
+    # Admin text channel id that will receive logs
+    #
+    # Type: snowflake
+    adminId: ''
 
 # Backup configuration
 Backup:
 
-    enabled: false
+  enabled: false
 
-    # Unit: minute
-    interval: 60
+  # Unit: minute
+  interval: 60
 
-    # Temp directory
-    tempDir: ''
+  # Temp directory
+  tempDir: ''
 
-    # Each backup cycle consists of one full backup and follow-up
-    # incremental backups. If the length is 1, only the full backups
-    # will take place.
-    cycleLength: 5
+  # Each backup cycle consists of one full backup and follow-up
+  # incremental backups. If the length is 1, only the full backups
+  # will take place.
+  cycleLength: 5
 
-    # Max cycles to retain
-    # Value of 2 would mean that 2 cycles(full + incremental backups) at most
-    # will be retained
-    # 0 or negative value will disable deletion of old backups
-    maxCycles: 5
+  # Max cycles to retain
+  # Value of 2 would mean that 2 cycles(full + incremental backups) at most
+  # will be retained
+  # 0 or negative value will disable deletion of old backups
+  maxCycles: 5
 
-    # plugins folder is backed up as 1 full and forever incremental
+  # plugins folder is backed up as 1 full and forever incremental
 
-    # Server resources, relative to the spigot.jar's working directory
-    # resources are backed up as 1 full and forever incremental
-    resources:
-        - banned-ips.json
-        - banned-players.json
-        - bukkit.yml
-        - commands.yml
-        - eula.txt
-        - help.yml
-        - ops.json
-        - permissions.yml
-        - server.properties
-        - spigot.yml
-        - usercache.json
-        - whitelist.json
+  # Server resources, relative to the spigot.jar's working directory
+  # resources are backed up as 1 full and forever incremental
+  resources:
+    - banned-ips.json
+    - banned-players.json
+    - bukkit.yml
+    - commands.yml
+    - eula.txt
+    - help.yml
+    - ops.json
+    - permissions.yml
+    - server.properties
+    - spigot.yml
+    - usercache.json
+    - whitelist.json
 
-    # S3 Settings
+  # S3 Settings
 
-    ## AWS credentials file is at Backup/awsCredentials.yml
-    ## Required permissions: listBucket, getObject, putObject, deleteObject
+  ## AWS credentials file is at Backup/awsCredentials.yml
+  ## Required permissions: listBucket, getObject, putObject, deleteObject
 
-    ## Region for the bucket
-    s3Region: ''
+  ## Region for the bucket
+  s3Region: ''
 
-    ## Bucket name
-    s3Bucket: ''
+  ## Bucket name
+  s3Bucket: ''
 
-    ## Prefix for the backups, if want to have the backups in a directory
-    ## put a slash at the end of the prefix
-    s3Prefix: ''
+  ## Prefix for the backups, if want to have the backups in a directory
+  ## put a slash at the end of the prefix
+  s3Prefix: ''
 
 SimpleRcon:
 
-    port: 25576
+  port: 25576
+
+Leaderboard:
+
+  # Whether or not to shuffle stat list
+  # The list is shuffled at start-up and shuffled again when it reaches the end
+  shuffle: true
+
+  # How often the plugin will show leaderboard
+  #
+  # Unit: minutes
+  # Default: 20
+  interval: 20
+
+  stats:
+
+    # Name shown on the top of table
+    "Time Played(hours)":
+
+      # This example shows how to convert PLAY_ONE_MINUTE into hours of time played
+
+      # Type is used for getting certain type of stats
+      # Refer to Enum org.bukkit.Statistic
+      type: PLAY_ONE_MINUTE # this actually records ticks played
+
+      # Value to multiply
+      multiply: 1.0
+
+      # Value to divide (this option is for convenience)
+      divide: 4320000.0 # 20(ticks) * 60(seconds) * 60(minutes)
+
+      # Format used for formatting results
+      # java.text.DecimalFormat
+      #
+      # Default: '#,##0'
+      format: '#,##0.0'
+
+      # Sorting order for the stat
+      #
+      # Values: [asc, desc]
+      # Default: desc
+      order: desc
+
+    "Diamonds Mined":
+
+      # This example shows how to show how many diamonds players mined
+
+      type: MINE_BLOCK
+      material: DIAMOND_ORE # Refer to org.bukkit.Material
+
+    "Pigs Killed":
+
+      # This example shows how to show how many pigs players killed
+
+      type: KILL_ENTITY
+      entityType: PIG # Refer to org.bukkit.entity.EntityType

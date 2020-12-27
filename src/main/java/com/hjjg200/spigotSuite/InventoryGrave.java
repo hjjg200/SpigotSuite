@@ -23,7 +23,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
-
 import org.bukkit.entity.Player;
 
 public final class InventoryGrave implements Module, Listener {

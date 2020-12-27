@@ -30,7 +30,56 @@ public final class SimpleRcon implements Module {
     private boolean running = false;
     private int port;
     private ServerSocket server = null;
-    private CompletableFuture<Void> lock;
+    private Task task = null;
+
+    class Task implements Runnable {
+        final ServerSocket server;
+        Task(final ServerSocket server) {
+            this.server = server;
+        }
+        public void close() throws Exception {
+            server.close();
+        }
+        class SyncTask implements Callable<Void> {
+            private final String command;
+            public SyncTask(final String command) {
+                this.command = command;
+            }
+            public Void call() {
+                final Server server = ss.getServer();
+                final CommandSender cs = server.getConsoleSender();
+                server.dispatchCommand(cs, command);
+                return null;
+            }
+        }
+        public void run() {
+            while(running) {
+                try {
+                    Socket socket = server.accept();
+                    final BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    final String message = reader.readLine();
+                    final Logger logger = (Logger)LogManager.getRootLogger();
+                    final OutputStreamAppender appender = OutputStreamAppender
+                        .createAppender(Log4jUtils.getLayout(),
+                        null,
+                        socket.getOutputStream(),
+                        "SimpleRconAppender",
+                        false,
+                        true);
+
+                    appender.start();
+                    logger.addAppender(appender);
+                    final Future<Void> future = ss.getServer().getScheduler().callSyncMethod(ss, new SyncTask(message));
+                    future.get();
+                    socket.close();
+                    logger.removeAppender(appender);
+                    appender.stop();
+                } catch(Exception ex) {
+                    continue;
+                }
+            }
+        }
+    };
 
     public SimpleRcon(final SpigotSuite ss) {
         this.ss = ss;
@@ -40,56 +89,12 @@ public final class SimpleRcon implements Module {
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
         port = config.getInt("port");
         server = new ServerSocket(port, 50, Inet4Address.getLoopbackAddress());
-
-        class Task implements Runnable {
-            class SyncTask implements Callable<Void> {
-                private final String command;
-                public SyncTask(final String command) {
-                    this.command = command;
-                }
-                public Void call() {
-                    final Server server = ss.getServer();
-                    final CommandSender cs = server.getConsoleSender();
-                    server.dispatchCommand(cs, command);
-                    return null;
-                }
-            }
-            public void run() {
-                while(running) {
-                    try {
-                        Socket socket = server.accept();
-                        final BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                        final String message = reader.readLine();
-                        final Logger logger = (Logger)LogManager.getRootLogger();
-                        final OutputStreamAppender appender = OutputStreamAppender
-                            .createAppender(Log4jUtils.getLayout(),
-                            null,
-                            socket.getOutputStream(),
-                            "SimpleRconAppender",
-                            false,
-                            true);
-
-                        appender.start();
-                        logger.addAppender(appender);
-                        final Future<Void> future = ss.getServer().getScheduler().callSyncMethod(ss, new SyncTask(message));
-                        future.get();
-                        socket.close();
-                        logger.removeAppender(appender);
-                        appender.stop();
-                    } catch(Exception ex) {
-                        continue;
-                    }
-                }
-            }
-        };
-        running = true;
-        lock = CompletableFuture.runAsync(new Task());
+        task = new Task(server);
+        task.run();
     }
 
     public void disable() throws Exception {
-        running = false;
-        server.close();
-        lock.join();
+        task.close();
     }
 
     public final String getName() {

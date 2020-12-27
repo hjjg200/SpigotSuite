@@ -64,7 +64,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.IllegalPluginAccessException;
-import org.bukkit.ChatColor;;
+import org.bukkit.ChatColor;
 
 import com.hjjg200.spigotSuite.util.Archive;
 import com.hjjg200.spigotSuite.util.Resource;

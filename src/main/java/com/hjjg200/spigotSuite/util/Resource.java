@@ -21,7 +21,10 @@ public final class Resource {
     private final static File getResourceFile(Plugin plugin, String start, String ...more) {
         plugin.getDataFolder().mkdirs();
         final File resource = Paths.get(start, more).toFile();
-        if(plugin.getResource(resource.getPath()) != null) plugin.saveResource(resource.getPath(), false);
+        if(plugin.getResource(resource.getPath()) != null
+                && resource.exists() == false) {
+            plugin.saveResource(resource.getPath(), false);
+        }
         return resource;
     }
 

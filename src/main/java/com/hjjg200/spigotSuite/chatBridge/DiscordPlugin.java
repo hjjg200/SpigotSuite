@@ -26,7 +26,7 @@ import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.server.BroadcastMessageEvent;
-import org.bukkit.configuration.Configuration;
+import org.bukkit.configuration.ConfigurationSection;
 
 public final class DiscordPlugin implements Plugin {
 
@@ -103,7 +103,7 @@ public final class DiscordPlugin implements Plugin {
         return PLUGIN_NAME;
     }
 
-    public DiscordPlugin(final Configuration config) {
+    public DiscordPlugin(final ConfigurationSection config) {
         botToken = config.getString("botToken");
         channelId = config.getString("channelId");
         assert !channelId.equals("") : "Invalid channelId supplied";

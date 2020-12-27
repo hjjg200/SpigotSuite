@@ -30,6 +30,7 @@ public final class SpigotSuite extends JavaPlugin {
         modules.add(new ChatBridge(this));
         modules.add(new Backup(this));
         modules.add(new SimpleRcon(this));
+        modules.add(new Leaderboard(this));
         modules.removeIf(m -> {
             boolean failed = true;
             try {
