@@ -2,11 +2,14 @@ package com.hjjg200.spigotSuite;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Set;
 import java.util.Iterator;
 import java.util.Collections;
 import java.util.Arrays;
 import java.text.DecimalFormat;
+import java.lang.IllegalArgumentException;
 
 import org.bukkit.OfflinePlayer;
 import org.bukkit.ChatColor;
@@ -17,8 +20,11 @@ import org.bukkit.Material;
 
 public final class Leaderboard implements Module {
 
-    public final static String NAME = Leaderboard.class.getSimpleName();
-    public final static long TICK_MINUTE = 20L * 60L;
+    private final static String NAME = Leaderboard.class.getSimpleName();
+    private final static long TICK_MINUTE = 20L * 60L;
+    private final static String TYPE = "type";
+    private final static String ENTITY_TYPE = "entityType";
+    private final static String MATERIAL = "material";
 
     private final SpigotSuite ss;
     private int taskId = -1;
@@ -47,6 +53,39 @@ public final class Leaderboard implements Module {
         keyList.addAll(keySet);
         taskId = ss.getServer().getScheduler().scheduleSyncRepeatingTask(ss, new Runnable() {
             Iterator<String> it = null;
+
+            private final <T extends Enum<T>> List<T> enumList(final ConfigurationSection stat, final Class<T> clazz) {
+
+                String enumType;
+                if(clazz == EntityType.class) {
+                    enumType = ENTITY_TYPE;
+                } else if(clazz == Material.class) {
+                    enumType = MATERIAL;
+                } else {
+                    return null;
+                }
+
+                if(!stat.contains(enumType))
+                    return null;
+
+                List<T> list;
+                if(stat.isList(enumType)) {
+                    list = new ArrayList<T>();
+                    final List<String> stringList = stat.getStringList(enumType);
+                    for(final String name : stringList) {
+                        list.add(T.valueOf(clazz, name));
+                    }
+                    if(list.size() == 0) {
+                        list = Arrays.asList(clazz.getEnumConstants());
+                    }
+                } else {
+                    list = new ArrayList<T>();
+                    list.add(T.valueOf(clazz, stat.getString(enumType)));
+                }
+
+                return list;
+
+            }
             @Override
             public void run() {
                 if(it == null || it.hasNext() == false) {
@@ -57,46 +96,87 @@ public final class Leaderboard implements Module {
                 }
                 final String key = it.next();
                 final ConfigurationSection stat = statsConfig.getConfigurationSection(key);
-                final Statistic type = Statistic.valueOf(stat.getString("type"));
+                final List<Statistic> types = new ArrayList<Statistic>();
+                if(stat.isList(TYPE)) {
+                    List<String> list = stat.getStringList(TYPE);
+                    for(final String each : list) {
+                        types.add(Statistic.valueOf(each));
+                    }
+                } else {
+                    types.add(Statistic.valueOf(stat.getString(TYPE)));
+                }
                 final double multiply = stat.getDouble("multiply", 1.0);
                 final double divide = stat.getDouble("divide", 1.0);
                 final DecimalFormat format = new DecimalFormat(stat.getString("format", "#,###"));
                 final String order = stat.getString("order", "desc");
 
-                final String entityTypeString = stat.getString("entityType", "");
-                final String materialString = stat.getString("material", "");
+                // EntityType and Material
+                final List<EntityType> entityTypes = enumList(stat, EntityType.class);
+                final List<Material> materials = enumList(stat, Material.class);
+                final Map<String, Double> map = new HashMap<String, Double>();
+                List<OfflinePlayer> players = Arrays.asList(ss.getServer().getOfflinePlayers());
 
+                int increment = 0;
+                for(final Statistic type : types) {
+                    if(entityTypes != null) {
+                        for(final EntityType entityType : entityTypes) {
+                            try {
+                                for(final OfflinePlayer player : players) {
+                                    map.put(player.getName(), player.getStatistic(type, entityType)
+                                            + map.getOrDefault(player.getName(), 0.0d));
+                                    increment++;
+                                }
+                            } catch(IllegalArgumentException ex) {
+                                continue;
+                            } catch(Exception ex) {
+                                ex.printStackTrace();
+                                return;
+                            }
+                        }
+                    } else if(materials != null) {
+                        for(final Material material : materials) {
+                            try {
+                                for(final OfflinePlayer player : players) {
+                                    map.put(player.getName(), player.getStatistic(type, material)
+                                            + map.getOrDefault(player.getName(), 0.0d));
+                                    increment++;
+                                }
+                            } catch(IllegalArgumentException ex) {
+                                continue;
+                            } catch(Exception ex) {
+                                ex.printStackTrace();
+                                return;
+                            }
+                        }
+                    } else {
+                        try {
+                            for(final OfflinePlayer player : players) {
+                                map.put(player.getName(), player.getStatistic(type)
+                                        + map.getOrDefault(player.getName(), 0.0d));
+                                increment++;
+                            }
+                        } catch(IllegalArgumentException ex) {
+                            continue;
+                        } catch(Exception ex) {
+                            ex.printStackTrace();
+                            return;
+                        }
+                    }
+                }
+
+                // Sort and make table
                 class Elem {
-                    OfflinePlayer player;
+                    final String name;
                     double value;
-                    Elem(final OfflinePlayer player, final double value) {
-                        this.player = player;
+                    Elem(final String name, final double value) {
+                        this.name = name;
                         this.value = value;
                     }
                 }
                 final List<Elem> list = new ArrayList<Elem>();
-
-                List<OfflinePlayer> players = Arrays.asList(ss.getServer().getOfflinePlayers());
-                try {
-                    for(final OfflinePlayer player : players) {
-                        double value = 0.0d;
-                        if(!"".equals(entityTypeString)) {
-                            final EntityType entityType = EntityType.valueOf(entityTypeString);
-                            value = player.getStatistic(type, entityType);
-                        } else if(!"".equals(materialString)) {
-                            final Material material = Material.valueOf(materialString);
-                            value = player.getStatistic(type, material);
-                        } else {
-                            value = player.getStatistic(type);
-                        }
-                        list.add(new Elem(player, value));
-                    }
-                } catch(Exception ex) {
-                    ex.printStackTrace();
-                    return;
+                for(final String name : map.keySet()) {
+                    list.add(new Elem(name, map.get(name)));
                 }
-
-                // Sort and make table
                 list.sort((lhs, rhs) -> {
                     if(lhs.value == rhs.value) return 0;
                     if("asc".equals(order)) {
@@ -112,7 +192,7 @@ public final class Leaderboard implements Module {
                     elem.value /= divide;
                     table += "\n"
                             + ChatColor.RED + String.format("%d. ", ++i)
-                            + ChatColor.RESET + elem.player.getName()
+                            + ChatColor.RESET + elem.name
                             + ChatColor.GRAY + " ("
                             + ChatColor.YELLOW + format.format(elem.value)
                             + ChatColor.GRAY + ")";

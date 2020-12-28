@@ -27,17 +27,18 @@ public final class SimpleRcon implements Module {
     private final static String NAME = SimpleRcon.class.getSimpleName();
 
     private final SpigotSuite ss;
-    private boolean running = false;
     private int port;
     private ServerSocket server = null;
     private Task task = null;
 
     class Task implements Runnable {
         final ServerSocket server;
+        boolean running = true;
         Task(final ServerSocket server) {
             this.server = server;
         }
         public void close() throws Exception {
+            running = false;
             server.close();
         }
         class SyncTask implements Callable<Void> {
@@ -90,7 +91,7 @@ public final class SimpleRcon implements Module {
         port = config.getInt("port");
         server = new ServerSocket(port, 50, Inet4Address.getLoopbackAddress());
         task = new Task(server);
-        task.run();
+        CompletableFuture.runAsync(task);
     }
 
     public void disable() throws Exception {
