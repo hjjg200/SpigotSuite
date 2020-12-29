@@ -1,6 +1,8 @@
 package com.hjjg200.spigotSuite;
 
+import java.util.Iterator;
 import java.util.List;
+import java.util.ArrayList;
 import java.time.format.DateTimeFormatter;
 import java.time.LocalDateTime;
 
@@ -17,12 +19,18 @@ import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.Rotatable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.event.inventory.InventoryType;
-import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDamageByBlockEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 public final class InventoryGrave implements Module, Listener {
@@ -32,8 +40,10 @@ public final class InventoryGrave implements Module, Listener {
     private final static int SEARCH_RADIUS = 9;
 
     private final SpigotSuite ss;
+    private final List<Block> protectedBlocks = new ArrayList<Block>();
     private List<Integer> keptSlots;
     private List<String> datePatterns;
+    private long protectFor;
 
     public InventoryGrave(final SpigotSuite ss) {
         this.ss = ss;
@@ -46,12 +56,14 @@ public final class InventoryGrave implements Module, Listener {
         keptSlots = config.getIntegerList("keptSlots");
         assert keptSlots.size() <= MAX_CHEST_SLOTS : "Kept items must fit into a chest";
         datePatterns = config.getStringList("datePatterns");
+        // * ProtectFor to ticks
+        protectFor = (long)(config.getDouble("protectFor") * 20.0);
         // Register events
         ss.getServer().getPluginManager().registerEvents(this, ss);
     }
 
     public final void disable() {
-
+        protectedBlocks.clear();
     }
 
     @EventHandler
@@ -68,6 +80,17 @@ public final class InventoryGrave implements Module, Listener {
         final Block cBlk = w.getBlockAt(cLoc);
         final Location sLoc = cLoc.clone().add(0, 1, 0);
         final Block sBlk = w.getBlockAt(sLoc);
+
+        // Add to protected list
+        protectedBlocks.add(cBlk);
+        protectedBlocks.add(sBlk);
+        // * Protect the grave from natural cause for 5 seconds
+        ss.getServer().getScheduler().scheduleSyncDelayedTask(ss, new Runnable() {
+            public void run() {
+                protectedBlocks.remove(cBlk);
+                protectedBlocks.remove(sBlk);
+            }
+        }, 20L * protectFor);
 
         // Make chest
         cBlk.setType(Material.CHEST);
@@ -98,8 +121,24 @@ public final class InventoryGrave implements Module, Listener {
         s.setEditable(false);
         s.setColor(DyeColor.WHITE);
         s.setLine(0, toBold(p.getDisplayName()));
-        final DamageCause cause = p.getLastDamageCause().getCause();
-        s.setLine(1, cause.toString());
+        // ** Get cause
+        final EntityDamageEvent damageCause = p.getLastDamageCause();
+        String causeCaps = damageCause.getCause().toString();
+        if(damageCause != null) {
+            if(damageCause instanceof EntityDamageByBlockEvent) {
+                final EntityDamageByBlockEvent damageEvent = (EntityDamageByBlockEvent)damageCause;
+                final Block damager = damageEvent.getDamager();
+                if(damager != null)
+                    causeCaps = damager.getType().toString();
+            } else if(damageCause instanceof EntityDamageByEntityEvent) {
+                final EntityDamageByEntityEvent damageEvent = (EntityDamageByEntityEvent)damageCause;
+                final Entity damager = damageEvent.getDamager();
+                if(damager != null)
+                    causeCaps = damager.getType().toString();
+            }
+        }
+        s.setLine(1, pseudoCapsToTitle(causeCaps));
+        // ** Set date
         int i = 2;
         final LocalDateTime now = LocalDateTime.now();
         for(final String pt : datePatterns) {
@@ -117,8 +156,39 @@ public final class InventoryGrave implements Module, Listener {
 
     }
 
+    @EventHandler
+    public void onEntityChangeBlock(EntityChangeBlockEvent e) {
+        if(protectedBlocks.contains(e.getBlock())) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onEntityExplodeEvent(EntityExplodeEvent e) {
+        for(final Iterator<Block> it = e.blockList().iterator(); it.hasNext();) {
+            final Block block = it.next();
+            if(protectedBlocks.contains(block)) it.remove();
+        }
+    }
+
+    @EventHandler
+    public void onBlockExplodeEvent(BlockExplodeEvent e) {
+        for(final Iterator<Block> it = e.blockList().iterator(); it.hasNext();) {
+            final Block block = it.next();
+            if(protectedBlocks.contains(block)) it.remove();
+        }
+    }
+
     public final String getName() {
         return NAME;
+    }
+
+    private final static String pseudoCapsToTitle(final String caps) {
+        final String[] split = caps.split("_");
+        for(int i = 0; i < split.length; i++) {
+            split[i] = split[i].substring(0, 1) + split[i].substring(1).toLowerCase();
+        }
+        return String.join(" ", split);
     }
 
     private final static String toBold(final String str) {
