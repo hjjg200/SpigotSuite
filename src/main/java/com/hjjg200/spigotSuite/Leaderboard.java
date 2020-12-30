@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.Iterator;
 import java.util.Collections;
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 import java.text.DecimalFormat;
 import java.lang.IllegalArgumentException;
 
@@ -33,6 +34,7 @@ public final class Leaderboard implements Module {
         this.ss = ss;
     }
 
+    // TODO: timeout tasks that take too long
     public final void enable() throws Exception {
 
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
@@ -51,9 +53,8 @@ public final class Leaderboard implements Module {
         // Schedule
         final List<String> keyList = new ArrayList<String>();
         keyList.addAll(keySet);
-        taskId = ss.getServer().getScheduler().scheduleSyncRepeatingTask(ss, new Runnable() {
+        final Runnable asyncTask = new Runnable() {
             Iterator<String> it = null;
-
             private final <T extends Enum<T>> List<T> enumList(final ConfigurationSection stat, final Class<T> clazz) {
 
                 String enumType;
@@ -86,7 +87,7 @@ public final class Leaderboard implements Module {
                 return list;
 
             }
-            @Override
+
             public void run() {
                 if(it == null || it.hasNext() == false) {
                     if(shuffle) {
@@ -201,7 +202,16 @@ public final class Leaderboard implements Module {
                 // Broadcast
                 ss.getServer().broadcastMessage(table);
             }
-        }, interval, interval);
+        };
+
+        final Runnable syncTask = new Runnable() {
+            public void run() {
+                CompletableFuture.runAsync(asyncTask);
+            }
+        };
+
+        taskId = ss.getServer().getScheduler().scheduleSyncRepeatingTask(ss, syncTask, interval, interval);
+
     }
 
     public final void disable() {

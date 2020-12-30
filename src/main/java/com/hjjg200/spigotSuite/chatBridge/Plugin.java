@@ -10,7 +10,7 @@ import org.apache.logging.log4j.core.Layout;
 
 public interface Plugin {
 
-    static class Event {
+    public static class Event {
         private final String display;
         private final String content;
         public Event(final String display, final String content) {

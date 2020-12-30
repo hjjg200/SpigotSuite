@@ -28,7 +28,7 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.server.BroadcastMessageEvent;
 import org.bukkit.configuration.ConfigurationSection;
 
-public final class DiscordPlugin implements Plugin {
+public final class DiscordPlugin extends AbstractPlugin {
 
     private final static String PLUGIN_NAME = "discord";
     private final static int JDA_MAX_LENGTH = 2000;
@@ -37,7 +37,6 @@ public final class DiscordPlugin implements Plugin {
     private transient String botToken;
     private transient String channelId;
     private transient String adminId;
-    private Consumer<Event> listener;
     private ArrayList<DiscordAppender> appenders = new ArrayList<DiscordAppender>();
 
     private final class MessageListener extends ListenerAdapter {
@@ -104,13 +103,16 @@ public final class DiscordPlugin implements Plugin {
     }
 
     public DiscordPlugin(final ConfigurationSection config) {
+        super(config);
+    }
+
+    public void enable() {
+        // Config
         botToken = config.getString("botToken");
         channelId = config.getString("channelId");
         assert !channelId.equals("") : "Invalid channelId supplied";
         adminId = config.getString("adminId");
-    }
-
-    public void enable() {
+        // Discord
         JDABuilder builder = JDABuilder.createDefault(botToken);
         builder.addEventListeners(new MessageListener());
         try {
@@ -132,9 +134,6 @@ public final class DiscordPlugin implements Plugin {
         jda = null;
     }
 
-    public final void subscribeEvent(final Consumer<Event> listener) {
-        this.listener = listener;
-    }
 
     private final void sendMessageToTextChannel(final String id, String message) {
         if(message.length() > JDA_MAX_LENGTH) {
