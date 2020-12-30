@@ -111,7 +111,7 @@ public final class InventoryGrave implements Module, Listener {
         }
 
         // Make sign
-        sBlk.setType(Material.CRIMSON_SIGN);
+        sBlk.setType(Material.DARK_OAK_SIGN);
         final Sign s = (Sign)sBlk.getState();
         final Rotatable sData = (Rotatable)s.getBlockData();
         // * Set Facing
