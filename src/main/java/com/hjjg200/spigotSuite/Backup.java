@@ -79,128 +79,6 @@ import org.bukkit.ChatColor;
 import com.hjjg200.spigotSuite.util.Archive;
 import com.hjjg200.spigotSuite.util.Resource;
 
-final class S3Short {
-
-    private final S3Client client;
-    private final String bucket;
-    private final String prefix;
-    private final GetObjectRequest.Builder getObjectBuilder;
-    private final PutObjectRequest.Builder putObjectBuilder;
-    private final UploadPartRequest.Builder uploadPartBuilder;
-    private final DeleteObjectsRequest.Builder deleteObjectsBuilder;
-
-    public S3Short(final Region region, final String bucket, final String prefix) {
-        client = S3Client.builder()
-            .credentialsProvider(SystemPropertyCredentialsProvider.create())
-            .region(region)
-            .build();
-        this.bucket = bucket;
-        this.prefix = prefix;
-
-        getObjectBuilder = GetObjectRequest.builder().bucket(bucket);
-        putObjectBuilder = PutObjectRequest.builder().bucket(bucket);
-        uploadPartBuilder = UploadPartRequest.builder().bucket(bucket);
-        deleteObjectsBuilder = DeleteObjectsRequest.builder().bucket(bucket);
-    }
-
-    private final static String contentTypeOf(final String key) {
-        final String[] split = key.split("\\.");
-        if(split.length < 2) return "";
-        switch(split[split.length - 1]) {
-        case "yml": return "application/x-yaml";
-        case "gz": return "application/gzip";
-        case "tar": return "application/x-tar";
-        case "sha1": return "text/plain";
-        }
-        return "";
-    }
-
-    public final HeadBucketResponse headBucket() throws Exception {
-        return client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
-    }
-
-    private final String process(final String key) {
-        return prefix + key;
-    }
-
-    public final GetObjectResponse getObject(final String key, final File file) throws Exception {
-        return client.getObject(
-            getObjectBuilder.key(process(key)).build(),
-            file.toPath());
-    }
-
-    public final PutObjectResponse putObject(final String key, final File file) throws Exception {
-        return client.putObject(
-            putObjectBuilder.key(process(key)).contentType(contentTypeOf(key)).build(),
-            file.toPath());
-    }
-
-    public final void multipartUpload(final String key, final Path path) throws Exception {
-
-        final String processedKey = process(key);
-        final long size = Files.size(path);
-        long partSize = (long)Math.max(
-                5 * 1024 * 1024,
-                Math.ceil((double)size / 10000.0d)); // Max upload parts
-
-        final CreateMultipartUploadRequest createRequest = CreateMultipartUploadRequest.builder()
-                .bucket(bucket)
-                .key(processedKey)
-                .contentType(contentTypeOf(processedKey))
-                .build();
-
-        final CreateMultipartUploadResponse createResponse = client.createMultipartUpload(createRequest);
-        final String uploadId = createResponse.uploadId();
-        final List<CompletedPart> completedParts = new ArrayList<CompletedPart>();
-
-        final InputStream in = Files.newInputStream(path);
-        long position = 0;
-        for(int i = 1; position < size; i++) {
-            partSize = Math.min(partSize, (size - position));
-            final UploadPartRequest partRequest = UploadPartRequest.builder()
-                    .bucket(bucket)
-                    .contentLength(partSize)
-                    .key(processedKey)
-                    .partNumber(i)
-                    .uploadId(uploadId)
-                    .build();
-            final UploadPartResponse partResponse = client.uploadPart(
-                    partRequest,
-                    RequestBody.fromInputStream(in, partSize));
-
-            completedParts.add(CompletedPart.builder()
-                    .partNumber(i)
-                    .eTag(partResponse.eTag())
-                    .build());
-
-            position += partSize;
-        }
-        in.close();
-
-        final CompletedMultipartUpload completedMultipart = CompletedMultipartUpload.builder()
-                .parts(completedParts)
-                .build();
-        final CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
-                .bucket(bucket)
-                .key(processedKey)
-                .uploadId(uploadId)
-                .multipartUpload(completedMultipart)
-                .build();
-        client.completeMultipartUpload(completeRequest);
-
-    }
-
-    public final DeleteObjectsResponse deleteObjects(final Collection<String> keys) throws Exception {
-        final ArrayList<ObjectIdentifier> identifiers = new ArrayList<ObjectIdentifier>();
-        for(final String key : keys) {
-            identifiers.add(ObjectIdentifier.builder().key(process(key)).build());
-        }
-        final Delete delete = Delete.builder().objects(identifiers).build();
-        return client.deleteObjects(deleteObjectsBuilder.delete(delete).build());
-    }
-
-}
-
 public final class Backup implements Module, Listener {
 
     private final static String NAME = Backup.class.getSimpleName();
@@ -231,42 +109,155 @@ public final class Backup implements Module, Listener {
     private String s3Bucket; // = "my-s3-bucket"
     private Region s3Region; // = "ap-northeast-2"
     private String s3Prefix; // = "/backup/minecraft/"
-    private S3Short s3Short;
 
     public final static class Version {
+
         public static enum Type {
             FULL,
             INCREMENTAL
         }
+
         private final static DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss");
-        private final static String SEPARATOR = "-"; // this must be regex compatible
+        private final static String SEPARATOR = "-";
         private final LocalDateTime _time;
         private final Type _type;
 
         public Version(final String string) {
             final String[] split = string.split(SEPARATOR);
-            if(split.length < 2) throw new IllegalArgumentException("Malformed version");
+            if(split.length < 2) {
+                throw new IllegalArgumentException("Malformed version string");
+            }
             _time = LocalDateTime.from(FORMATTER.parse(split[0]));
             _type = Type.valueOf(Type.class, split[1]);
         }
+
         public Version(final LocalDateTime time, final Type type) {
             _time = time;
             _type = type;
         }
+
         public final Type type() {
             return _type;
         }
+
         public final LocalDateTime time() {
             return _time;
         }
+
         public final String toString() {
             return _time.format(FORMATTER) + SEPARATOR + _type.name();
         }
+
         public final boolean equals(final Version rhs) {
             return this._time.equals(rhs._time) && this._type.equals(rhs._type);
         }
+
     }
 
+    // S3-related
+    private final S3Client createS3Client() {
+        return S3Client.builder()
+                       .credentialsProvider(SystemPropertyCredentialsProvider.create())
+                       .region(s3Region)
+                       .build();
+    }
+
+    private final static String contentTypeOf(final String suffix) {
+        final String[] split = suffix.split("\\.");
+        if(split.length < 2) return "";
+        switch(split[split.length - 1]) {
+        case "yml": return "application/x-yaml";
+        case "gz": return "application/gzip";
+        case "tar": return "application/x-tar";
+        case "sha1": return "text/plain";
+        }
+        return "";
+    }
+
+    private final void headBucket(final S3Client client) throws Exception {
+        client.headBucket(HeadBucketRequest.builder().bucket(s3Bucket).build());
+    }
+
+    private final void getObject(final S3Client client, final String suffix, final Path path) throws Exception {
+        client.getObject(GetObjectRequest.builder()
+                                         .bucket(s3Bucket)
+                                         .key(s3Prefix + suffix)
+                                         .build(),
+                         path);
+
+    }
+
+    private final void putObject(final S3Client client, final String suffix, final Path path) throws Exception {
+        client.putObject(PutObjectRequest.builder()
+                                         .bucket(s3Bucket)
+                                         .key(s3Prefix + suffix)
+                                         .build(),
+                         path);
+    }
+
+    private final void deleteObjects(final S3Client client, final Collection<String> suffixes) throws Exception {
+
+        final List<ObjectIdentifier> identifiers = new ArrayList<ObjectIdentifier>();
+        for(final String suffix : suffixes) {
+            identifiers.add(ObjectIdentifier.builder().key(s3Prefix + suffix).build());
+        }
+        final Delete delete = Delete.builder().objects(identifiers).build();
+        client.deleteObjects(DeleteObjectsRequest.builder()
+                                                 .bucket(s3Bucket)
+                                                 .delete(delete)
+                                                 .build());
+
+    }
+
+    private final void multipartUpload(final S3Client client, final String suffix, final Path path) throws Exception {
+
+        final long contentSize = Files.size(path);
+        long partSize = (long)Math.max(
+                5 * 1024 * 1024,
+                Math.ceil((double)contentSize / 10000.0d)); // Max upload parts
+
+        final String uploadId = client.createMultipartUpload(CreateMultipartUploadRequest.builder()
+                                                                                         .bucket(s3Bucket)
+                                                                                         .key(s3Prefix + suffix)
+                                                                                         .contentType(contentTypeOf(suffix))
+                                                                                         .build()).uploadId();
+        final List<CompletedPart> completedParts = new ArrayList<CompletedPart>();
+        final InputStream in = Files.newInputStream(path);
+
+        long position = 0;
+        for(int i = 1; position < contentSize; i++) {
+            partSize = Math.min(partSize, (contentSize - position));
+            final UploadPartRequest partRequest = UploadPartRequest.builder()
+                                                                   .bucket(s3Bucket)
+                                                                   .contentLength(partSize)
+                                                                   .key(s3Prefix + suffix)
+                                                                   .partNumber(i)
+                                                                   .uploadId(uploadId)
+                                                                   .build();
+            final UploadPartResponse partResponse = client.uploadPart(partRequest,
+                                                                      RequestBody.fromInputStream(in, partSize));
+            completedParts.add(CompletedPart.builder()
+                                            .partNumber(i)
+                                            .eTag(partResponse.eTag())
+                                            .build());
+            position += partSize;
+        }
+        in.close();
+
+        final CompletedMultipartUpload completedMultipart = CompletedMultipartUpload.builder()
+                                                                                    .parts(completedParts)
+                                                                                    .build();
+        final CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
+                                                                                             .bucket(s3Bucket)
+                                                                                             .key(s3Prefix + suffix)
+                                                                                             .uploadId(uploadId)
+                                                                                             .multipartUpload(completedMultipart)
+                                                                                             .build();
+        client.completeMultipartUpload(completeRequest);
+
+    }
+
+    // Commands
     private final class CommandBackupInfo implements CommandExecutor {
         @Override
         public boolean onCommand(final CommandSender sender, final Command command, final String label, final String[] args) {
@@ -577,12 +568,15 @@ Switch:
             final File folderTempDir = new File(tempDir, name);
             folderTempDir.mkdirs();
 
+            // S3 Client
+            final S3Client s3Client = createS3Client();
+
             // Get index file
             final String indexName = INDEX + YML;
             final File indexFile = new File(folderTempDir, indexName);
             YamlConfiguration index = new YamlConfiguration();
             try {
-                s3Short.getObject(format.apply(indexName), indexFile);
+                getObject(s3Client, format.apply(indexName), indexFile.toPath());
                 index = YamlConfiguration.loadConfiguration(indexFile);
             } catch(NoSuchKeyException ex) {
                 // Create new index file
@@ -615,7 +609,7 @@ Switch:
             if(versionStrings.size() > 0) {
                 final Version headVersion = new Version(versionStrings.get(versionStrings.size() - 1));
                 final File headMd5sFile = new File(folderTempDir, headVersion.toString() + YML);
-                s3Short.getObject(format.apply(headVersion.toString() + YML), headMd5sFile);
+                getObject(s3Client, format.apply(headVersion.toString() + YML), headMd5sFile.toPath());
                 headMd5s.load(headMd5sFile);
             }
 
@@ -630,7 +624,9 @@ Switch:
                     final String md5 = entry.md5();
                     md5s.set(key, md5);
                     final boolean result = isFull.get() || !md5.equals(headMd5s.getString(key));
-                    if(result) count.addAndGet(1);
+                    if(result) {
+                        count.addAndGet(1);
+                    }
                     return result;
                 });
 
@@ -640,9 +636,9 @@ Switch:
                 // * Tar, checksum, index
                 final File md5sFile = new File(folderTempDir, version.toString() + YML);
                 md5s.save(md5sFile);
-                s3Short.multipartUpload(format.apply(vstr + TAR), archive.toPath());
-                s3Short.putObject(format.apply(vstr + TAR + SHA1), new File(archive.getPath() + SHA1));
-                s3Short.putObject(format.apply(vstr + YML), md5sFile);
+                multipartUpload(s3Client, format.apply(vstr + TAR), archive.toPath());
+                putObject(s3Client, format.apply(vstr + TAR + SHA1), Paths.get(archive.getPath() + SHA1));
+                putObject(s3Client, format.apply(vstr + YML), md5sFile.toPath());
                 // * Add version
                 versionStrings.add(vstr);
                 versionsInfo.createSection(vstr);
@@ -668,7 +664,7 @@ Switch:
                             filesToDelete.add(format.apply(each + YML));
                         }
                         // Delete request
-                        s3Short.deleteObjects(filesToDelete);
+                        deleteObjects(s3Client, filesToDelete);
                         // Remove from index file
                         for(final String toDelete : versionsToDelete) {
                             versionStrings.remove(toDelete);
@@ -680,9 +676,12 @@ Switch:
                 index.set(VERSIONS, versionStrings);
                 index.set(VERSIONS_INFO, versionsInfo);
                 index.save(indexFile);
-                s3Short.putObject(format.apply(indexName), indexFile);
+                putObject(s3Client, format.apply(indexName), indexFile.toPath());
                 final File folderCacheDir = new File(cacheDir, name);
                 index.save(new File(folderCacheDir, INDEX + YML));
+
+                // End S3
+                s3Client.close();
 
                 ss.getLogger().log(Level.INFO, "Successfully backed up {0}", name);
             } else {
@@ -810,12 +809,10 @@ Switch:
         System.setProperty("aws.accessKeyId", awsCredentials.getString("accessKeyId"));
         System.setProperty("aws.secretAccessKey", awsCredentials.getString("secretAccessKey"));
         // * Client
-        s3Short = new S3Short(
-            Region.of(config.getString("s3Region")),
-            config.getString("s3Bucket"),
-            config.getString("s3Prefix")
-        );
-        s3Short.headBucket();
+        s3Region = Region.of(config.getString("s3Region"));
+        s3Bucket = config.getString("s3Bucket");
+        s3Prefix = config.getString("s3Prefix");
+        headBucket(createS3Client());
 
         ss.getLogger().log(Level.INFO, "Backup is configured at every {0} minutes", interval);
         ss.getCommand(NAME + "info").setExecutor(new CommandBackupInfo());
