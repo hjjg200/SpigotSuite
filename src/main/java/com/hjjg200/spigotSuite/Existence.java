@@ -17,11 +17,17 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import org.bukkit.craftbukkit.v1_16_R3.CraftServer;
 import org.bukkit.craftbukkit.v1_16_R3.CraftWorld;
 import org.bukkit.craftbukkit.v1_16_R3.entity.CraftPlayer;
 
+import net.minecraft.server.v1_16_R3.AttributeModifiable;
+import net.minecraft.server.v1_16_R3.GenericAttributes;
+import net.minecraft.server.v1_16_R3.EntitySlime;
+import net.minecraft.server.v1_16_R3.EntityTypes;
+import net.minecraft.server.v1_16_R3.ControllerMove;
 import net.minecraft.server.v1_16_R3.EnumProtocolDirection;
 import net.minecraft.server.v1_16_R3.NetworkManager;
 import net.minecraft.server.v1_16_R3.Packet;
@@ -156,6 +162,12 @@ class EmptyNetHandler extends PlayerConnection {
     }
 }
 
+class DummyNetworkManager extends NetworkManager {
+    public DummyNetworkManager(EnumProtocolDirection enumprotocoldirection) {
+        super(enumprotocoldirection);
+    }
+}
+
 public final class Existence implements Module, Listener {
 
     private final static String NAME = Existence.class.getSimpleName();
@@ -191,7 +203,7 @@ public final class Existence implements Module, Listener {
         entity.setLocation(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
         interactManager.setGameMode(EnumGamemode.SURVIVAL);
         // Mock
-        Socket socket = new EmptySocket();
+      /*  Socket socket = new EmptySocket();
         NetworkManager conn = null;
         try {
             conn = new EmptyNetworkManager(EnumProtocolDirection.CLIENTBOUND);
@@ -200,17 +212,27 @@ public final class Existence implements Module, Listener {
             socket.close();
         } catch (IOException ex) {
             // swallow
-        }
+        } */
+        entity.playerConnection = new PlayerConnection(nmsServer, new DummyNetworkManager(EnumProtocolDirection.CLIENTBOUND), entity);
         entity.invulnerableTicks = 0;
         //nmsWorld.addEntity(entity, CreatureSpawnEvent.SpawnReason.CUSTOM);
         //entity.spawnIn(nmsWorld);
 
-        ((CraftWorld) loc.getWorld()).getHandle().addEntity(entity);
-        ((CraftWorld) loc.getWorld()).getHandle().getPlayers().remove(entity);
+        nmsWorld.addEntity(entity);
+        nmsWorld.getPlayers().remove(entity);
+
+        new BukkitRunnable() {
+            public void run() {
+                entity.playerTick();
+            }
+        }.runTaskTimer(ss, 0, 1);
+
+        //ControllerMove controllerMove = new ControllerMove(new EntitySlime(EntityTypes.SLIME, nmsWorld));
 
         PlayerConnection connection = ((CraftPlayer) player).getHandle().playerConnection;
         connection.sendPacket(new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.ADD_PLAYER, entity));
         connection.sendPacket(new PacketPlayOutNamedEntitySpawn(entity));
+        connection.sendPacket(new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.REMOVE_PLAYER, entity));
 
         // Show it to player by sending ADD_PLAYER packet
         //PlayerConnection connection = ((CraftPlayer) player).getHandle().playerConnection;
