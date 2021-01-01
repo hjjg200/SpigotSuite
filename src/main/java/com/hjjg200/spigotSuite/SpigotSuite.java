@@ -31,6 +31,7 @@ public final class SpigotSuite extends JavaPlugin {
         modules.add(new Backup(this));
         modules.add(new SimpleRcon(this));
         modules.add(new Leaderboard(this));
+        modules.add(new Existence(this));
         modules.removeIf(m -> {
             boolean failed = true;
             try {
