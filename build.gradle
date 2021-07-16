@@ -33,7 +33,7 @@ dependencies {
     // * Spigot uses log4j 2.8.1
     compileOnly "org.apache.logging.log4j:log4j-api:2.8.1"
     compileOnly "org.apache.logging.log4j:log4j-core:2.8.1"
-    compileOnly 'org.spigotmc:spigot-api:1.16.4-R0.1-SNAPSHOT'
+    compileOnly 'org.spigotmc:spigot-api:1.17.1-R0.1-SNAPSHOT'
     // Tests
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.3.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.3.1'
