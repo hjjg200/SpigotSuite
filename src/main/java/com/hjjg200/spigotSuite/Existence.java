@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import com.mojang.authlib.GameProfile;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.event.Listener;
 import org.bukkit.event.EventHandler;
@@ -23,6 +24,7 @@ import org.bukkit.craftbukkit.v1_16_R3.CraftServer;
 import org.bukkit.craftbukkit.v1_16_R3.CraftWorld;
 import org.bukkit.craftbukkit.v1_16_R3.entity.CraftPlayer;
 
+import net.minecraft.server.v1_16_R3.DamageSource;
 import net.minecraft.server.v1_16_R3.AttributeModifiable;
 import net.minecraft.server.v1_16_R3.GenericAttributes;
 import net.minecraft.server.v1_16_R3.EntitySlime;
@@ -198,7 +200,23 @@ public final class Existence implements Module, Listener {
                                                nmsWorld,
                                                new GameProfile(UUID.randomUUID(), "dummy"),
                                                //new GameProfile(player.getUniqueId(), player.getName()),
-                                               interactManager);
+                                               interactManager) {
+            @Override
+            public boolean damageEntity(DamageSource damagesource, float f) {
+                boolean damaged = super.damageEntity(damagesource, f);
+                final EntityPlayer temp = this;
+                if (damaged && velocityChanged) {
+                    velocityChanged = false;
+                    ss.getServer().getScheduler().runTask(ss, new Runnable() {
+                        @Override
+                        public void run() {
+                            temp.velocityChanged = true;
+                        }
+                    });
+                }
+                return damaged;
+            }
+        };
 
         entity.setLocation(loc.getX(), loc.getY(), loc.getZ(), loc.getYaw(), loc.getPitch());
         interactManager.setGameMode(EnumGamemode.SURVIVAL);
@@ -216,7 +234,7 @@ public final class Existence implements Module, Listener {
         entity.playerConnection = new PlayerConnection(nmsServer, new DummyNetworkManager(EnumProtocolDirection.CLIENTBOUND), entity);
         entity.invulnerableTicks = 0;
         //nmsWorld.addEntity(entity, CreatureSpawnEvent.SpawnReason.CUSTOM);
-        //entity.spawnIn(nmsWorld);
+        entity.spawnIn(nmsWorld);
 
         nmsWorld.addEntity(entity);
         nmsWorld.getPlayers().remove(entity);
@@ -233,6 +251,8 @@ public final class Existence implements Module, Listener {
         connection.sendPacket(new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.ADD_PLAYER, entity));
         connection.sendPacket(new PacketPlayOutNamedEntitySpawn(entity));
         connection.sendPacket(new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.REMOVE_PLAYER, entity));
+
+        System.out.println(entity.isAlive());
 
         // Show it to player by sending ADD_PLAYER packet
         //PlayerConnection connection = ((CraftPlayer) player).getHandle().playerConnection;
