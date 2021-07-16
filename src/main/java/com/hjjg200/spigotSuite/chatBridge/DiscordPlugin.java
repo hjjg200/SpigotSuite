@@ -64,9 +64,7 @@ public final class DiscordPlugin extends AbstractPlugin {
         private Timer timer = null;
 
         public DiscordAppender(final Layout<? extends Serializable> layout) {
-            // This constructor is deprecated in 2.14.0
-            // Using 2.8.1 which spigot uses
-            super(DiscordAppender.class.getSimpleName(), null, layout);
+            super(DiscordAppender.class.getSimpleName(), null, layout, true, null);
         }
 
         public void flush() {

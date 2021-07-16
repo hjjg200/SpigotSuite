@@ -118,7 +118,7 @@ public final class ChatBridge implements Listener, Module {
     // Handling events
     private final class LogListener extends AbstractAppender {
         public LogListener() {
-            super(NAME + ".LogListener", null, null);
+            super(NAME + ".LogListener", null, null, true, null);
         }
         @Override
         public void append(LogEvent e) {

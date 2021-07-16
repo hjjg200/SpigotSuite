@@ -30,9 +30,9 @@ dependencies {
     implementation "commons-codec:commons-codec:1.15"
     implementation "net.dv8tion:JDA:4.2.0_168"
     // Use the spigot's shaded ones
-    // * Spigot uses log4j 2.8.1
-    compileOnly "org.apache.logging.log4j:log4j-api:2.8.1"
-    compileOnly "org.apache.logging.log4j:log4j-core:2.8.1"
+    // * Spigot 1.17.1 uses log4j 2.14.1
+    compileOnly "org.apache.logging.log4j:log4j-api:2.14.1"
+    compileOnly "org.apache.logging.log4j:log4j-core:2.14.1"
     compileOnly 'org.spigotmc:spigot-api:1.17.1-R0.1-SNAPSHOT'
     // Tests
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.3.1'
