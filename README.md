@@ -14,6 +14,7 @@ gradle shadowJar
 - Change `server.properties` - `motd`
 - `echo stop | nc localhost 25576`
 - `sudo reboot`
+- Change DNS records
 
 ## Start Command
 
