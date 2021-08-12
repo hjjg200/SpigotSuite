@@ -48,6 +48,9 @@ StopWhenEmpty:
 # ChatBridge configuration
 ChatBridge:
 
+  # Specify advancement description json file language which is in plugins/SpigotSuite/ChatBridge
+  advancementLanguage: en
+
   # Specify the plugin to use for ChatBridge
   # Available plugins: [none, discord]
   #

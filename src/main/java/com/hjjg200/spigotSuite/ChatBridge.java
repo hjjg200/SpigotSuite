@@ -2,11 +2,15 @@ package com.hjjg200.spigotSuite;
 
 import java.io.File;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.function.Consumer;
 import java.util.HashMap;
 import java.util.Collection;
+
+import org.json.JSONObject;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -32,6 +36,7 @@ import org.bukkit.event.server.BroadcastMessageEvent;
 
 import com.hjjg200.spigotSuite.chatBridge.*;
 import com.hjjg200.spigotSuite.util.Log4jUtils;
+import com.hjjg200.spigotSuite.util.Resource;
 
 public final class ChatBridge implements Listener, Module {
 
@@ -40,6 +45,7 @@ public final class ChatBridge implements Listener, Module {
 
     private final SpigotSuite ss;
     private final HashMap<String, Void> ignoreMap = new HashMap<String, Void>();
+    private JSONObject advancementMap;
     private Plugin plugin;
     private Logger logger = null;
     private LogListener logListener = null;
@@ -59,13 +65,17 @@ public final class ChatBridge implements Listener, Module {
         }
         // Configuration
         final ConfigurationSection config = ss.getConfig().getConfigurationSection(NAME);
+        final File dataFolder = new File(ss.getDataFolder(), NAME);
+        dataFolder.mkdirs();
+        final String advancementLang = config.getString("advancementLanguage");
+        // * Advancement json
+        final String advStr = Files.readString(Resource.get(ss, NAME, "advancements_" + advancementLang + ".json").toPath());
+        advancementMap = new JSONObject(advStr);
+        // * Plugin
         final String plName = config.getString("plugin");
         if(plName.equals("none")) {
             throw new Module.DisabledException();
         }
-        final File dataFolder = new File(ss.getDataFolder(), NAME);
-        dataFolder.mkdirs();
-        // * Plugin
         final ConfigurationSection plConfig = config.getConfigurationSection(plName);
         // * Instantiate plugin
         switch(plName) {
@@ -123,11 +133,25 @@ public final class ChatBridge implements Listener, Module {
         @Override
         public void append(LogEvent e) {
             if(e.getLevel().equals(Level.INFO)) {
-                final String message = e.getMessage().getFormattedMessage();
+                String message = e.getMessage().getFormattedMessage();
                 if(message.contains("has made the advancement")) {
-                    final String[] args = message.split(" ");
+                    message = ChatColor.stripColor(message);
+                    final String[] args = message.split(" ", 6);
                     for(final Player player : ss.getServer().getOnlinePlayers()) {
                         if(player.getDisplayName().equals(args[0])) {
+                            /*
+                            1.16, 1.17 Advancement format
+                            "%s has made the advancement [%s]"
+                             */
+                            final String playerName = args[0];
+                            final String advTitle = args[5].substring(1, args[5].length() - 1);
+
+                            final String advFmt = advancementMap.getString("chat.type.advancement.task");
+                            if(advancementMap.has(advTitle)) {
+                                final JSONObject adv = advancementMap.getJSONObject(advTitle);
+                                message = String.format(advFmt, playerName, "[" + adv.getString("title") + "]");
+                                message = message + " - " + adv.getString("description");
+                            }
                             plugin.sendMessage(null, message);
                             return;
                         }
@@ -151,28 +175,28 @@ public final class ChatBridge implements Listener, Module {
                 players.remove((Player)recipient);
         }
         if(players.size() == 0) {
-            plugin.sendMessage(null, ChatColor.stripColor(message));
+            plugin.sendMessage(null, message);
         }
     }
 
     @EventHandler
     public void onPlayerChat(final AsyncPlayerChatEvent e) {
-        plugin.sendMessage(e.getPlayer().getDisplayName(), ChatColor.stripColor(e.getMessage()));
+        plugin.sendMessage(e.getPlayer().getDisplayName(), e.getMessage());
     }
 
     @EventHandler
     public void onPlayerDeath(final PlayerDeathEvent e) {
-        plugin.sendMessage(null, ChatColor.stripColor(e.getDeathMessage()));
+        plugin.sendMessage(null, e.getDeathMessage());
     }
 
     @EventHandler
     public void onPlayerJoin(final PlayerJoinEvent e) {
-        plugin.sendMessage(null, ChatColor.stripColor(e.getJoinMessage()));
+        plugin.sendMessage(null, e.getJoinMessage());
     }
 
     @EventHandler
     public void onPlayerQuit(final PlayerQuitEvent e) {
-        plugin.sendMessage(null, ChatColor.stripColor(e.getQuitMessage()));
+        plugin.sendMessage(null, e.getQuitMessage());
     }
 
 }

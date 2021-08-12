@@ -1,0 +1,367 @@
+{
+  "chat.type.advancement.task": "%s has made the advancement %s",
+  "Adventuring Time": {
+    "title": "Adventuring Time",
+    "description": "Discover every biome"
+  },
+  "Arbalistic": {
+    "title": "Arbalistic",
+    "description": "Kill five unique mobs with one crossbow shot"
+  },
+  "Bullseye": {
+    "title": "Bullseye",
+    "description": "Hit the bullseye of a Target block from at least 30 meters away"
+  },
+  "Light as a Rabbit": {
+    "title": "Light as a Rabbit",
+    "description": "Walk on powder snow...without sinking in it"
+  },
+  "Surge Protector": {
+    "title": "Surge Protector",
+    "description": "Protect a villager from an undesired shock without starting a fire"
+  },
+  "Is It a Bird?": {
+    "title": "Is It a Bird?",
+    "description": "Look at a parrot through a spyglass"
+  },
+  "Is It a Balloon?": {
+    "title": "Is It a Balloon?",
+    "description": "Look at a ghast through a spyglass"
+  },
+  "Is It a Plane?": {
+    "title": "Is It a Plane?",
+    "description": "Look at the Ender Dragon through a spyglass"
+  },
+  "Hero of the Village": {
+    "title": "Hero of the Village",
+    "description": "Successfully defend a village from a raid"
+  },
+  "Sticky Situation": {
+    "title": "Sticky Situation",
+    "description": "Jump into a Honey Block to break your fall"
+  },
+  "Monsters Hunted": {
+    "title": "Monsters Hunted",
+    "description": "Kill one of every hostile monster"
+  },
+  "Monster Hunter": {
+    "title": "Monster Hunter",
+    "description": "Kill any hostile monster"
+  },
+  "Ol' Betsy": {
+    "title": "Ol' Betsy",
+    "description": "Shoot a crossbow"
+  },
+  "Adventure": {
+    "title": "Adventure",
+    "description": "Adventure, exploration and combat"
+  },
+  "Take Aim": {
+    "title": "Take Aim",
+    "description": "Shoot something with an arrow"
+  },
+  "Sweet Dreams": {
+    "title": "Sweet Dreams",
+    "description": "Sleep in a bed to change your respawn point"
+  },
+  "Sniper Duel": {
+    "title": "Sniper Duel",
+    "description": "Kill a Skeleton from at least 50 meters away"
+  },
+  "Hired Help": {
+    "title": "Hired Help",
+    "description": "Summon an Iron Golem to help defend a village"
+  },
+  "Postmortal": {
+    "title": "Postmortal",
+    "description": "Use a Totem of Undying to cheat death"
+  },
+  "What a Deal!": {
+    "title": "What a Deal!",
+    "description": "Successfully trade with a Villager"
+  },
+  "A Throwaway Joke": {
+    "title": "A Throwaway Joke",
+    "description": "Throw a trident at something.\nNote: Throwing away your only weapon is not a good idea."
+  },
+  "Two Birds, One Arrow": {
+    "title": "Two Birds, One Arrow",
+    "description": "Kill two Phantoms with a piercing arrow"
+  },
+  "Very Very Frightening": {
+    "title": "Very Very Frightening",
+    "description": "Strike a Villager with lightning"
+  },
+  "Voluntary Exile": {
+    "title": "Voluntary Exile",
+    "description": "Kill a raid captain.\nMaybe consider staying away from villages for the time being..."
+  },
+  "Who's the Pillager Now?": {
+    "title": "Who's the Pillager Now?",
+    "description": "Give a Pillager a taste of their own medicine"
+  },
+  "Husbandry": {
+    "title": "Husbandry",
+    "description": "The world is full of friends and food"
+  },
+  "The Parrots and the Bats": {
+    "title": "The Parrots and the Bats",
+    "description": "Breed two animals together"
+  },
+  "Fishy Business": {
+    "title": "Fishy Business",
+    "description": "Catch a fish"
+  },
+  "Glow and Behold!": {
+    "title": "Glow and Behold!",
+    "description": "Make the text of a sign glow"
+  },
+  "Whatever Floats Your Goat!": {
+    "title": "Whatever Floats Your Goat!",
+    "description": "Get in a Boat and float with a Goat"
+  },
+  "Tactical Fishing": {
+    "title": "Tactical Fishing",
+    "description": "Catch a fish... without a fishing rod!"
+  },
+  "The Cutest Predator": {
+    "title": "The Cutest Predator",
+    "description": "Catch an axolotl in a bucket"
+  },
+  "The Healing Power of Friendship!": {
+    "title": "The Healing Power of Friendship!",
+    "description": "Team up with an axolotl and win a fight"
+  },
+  "Two by Two": {
+    "title": "Two by Two",
+    "description": "Breed all the animals!"
+  },
+  "Best Friends Forever": {
+    "title": "Best Friends Forever",
+    "description": "Tame an animal"
+  },
+  "A Seedy Place": {
+    "title": "A Seedy Place",
+    "description": "Plant a seed and watch it grow"
+  },
+  "Serious Dedication": {
+    "title": "Serious Dedication",
+    "description": "Use a Netherite ingot to upgrade a hoe, and then reevaluate your life choices"
+  },
+  "A Balanced Diet": {
+    "title": "A Balanced Diet",
+    "description": "Eat everything that is edible, even if it's not good for you"
+  },
+  "A Complete Catalogue": {
+    "title": "A Complete Catalogue",
+    "description": "Tame all cat variants!"
+  },
+  "Bee Our Guest": {
+    "title": "Bee Our Guest",
+    "description": "Use a Campfire to collect Honey from a Beehive using a Bottle without aggravating the bees"
+  },
+  "Total Beelocation": {
+    "title": "Total Beelocation",
+    "description": "Move a Bee Nest, with 3 bees inside, using Silk Touch"
+  },
+  "Wax On": {
+    "title": "Wax On",
+    "description": "Apply Honeycomb to a Copper block!"
+  },
+  "Wax Off": {
+    "title": "Wax Off",
+    "description": "Scrape Wax off of a Copper block!"
+  },
+  "You Need a Mint": {
+    "title": "You Need a Mint",
+    "description": "Collect dragon's breath in a glass bottle"
+  },
+  "The Next Generation": {
+    "title": "The Next Generation",
+    "description": "Hold the Dragon Egg"
+  },
+  "Sky's the Limit": {
+    "title": "Sky's the Limit",
+    "description": "Find elytra"
+  },
+  "Remote Getaway": {
+    "title": "Remote Getaway",
+    "description": "Escape the island"
+  },
+  "The City at the End of the Game": {
+    "title": "The City at the End of the Game",
+    "description": "Go on in, what could happen?"
+  },
+  "Free the End": {
+    "title": "Free the End",
+    "description": "Good luck"
+  },
+  "Great View From Up Here": {
+    "title": "Great View From Up Here",
+    "description": "Levitate up 50 blocks from the attacks of a Shulker"
+  },
+  "The End... Again...": {
+    "title": "The End... Again...",
+    "description": "Respawn the Ender Dragon"
+  },
+  "The End": {
+    "title": "The End",
+    "description": "Or the beginning?"
+  },
+  "Local Brewery": {
+    "title": "Local Brewery",
+    "description": "Brew a potion"
+  },
+  "A Furious Cocktail": {
+    "title": "A Furious Cocktail",
+    "description": "Have every potion effect applied at the same time"
+  },
+  "How Did We Get Here?": {
+    "title": "How Did We Get Here?",
+    "description": "Have every effect applied at the same time"
+  },
+  "Bring Home the Beacon": {
+    "title": "Bring Home the Beacon",
+    "description": "Construct and place a beacon"
+  },
+  "Beaconator": {
+    "title": "Beaconator",
+    "description": "Bring a beacon to full power"
+  },
+  "A Terrible Fortress": {
+    "title": "A Terrible Fortress",
+    "description": "Break your way into a Nether Fortress"
+  },
+  "Spooky Scary Skeleton": {
+    "title": "Spooky Scary Skeleton",
+    "description": "Obtain a Wither Skeleton's skull"
+  },
+  "Into Fire": {
+    "title": "Into Fire",
+    "description": "Relieve a Blaze of its rod"
+  },
+  "Return to Sender": {
+    "title": "Return to Sender",
+    "description": "Destroy a Ghast with a fireball"
+  },
+  "Nether": {
+    "title": "Nether",
+    "description": "Bring summer clothes"
+  },
+  "Withering Heights": {
+    "title": "Withering Heights",
+    "description": "Summon the Wither"
+  },
+  "Subspace Bubble": {
+    "title": "Subspace Bubble",
+    "description": "Use the Nether to travel 7 km in the Overworld"
+  },
+  "Uneasy Alliance": {
+    "title": "Uneasy Alliance",
+    "description": "Rescue a Ghast from the Nether, bring it safely home to the Overworld... and then kill it"
+  },
+  "Hidden in the Depths": {
+    "title": "Hidden in the Depths",
+    "description": "Obtain Ancient Debris"
+  },
+  "Cover Me in Debris": {
+    "title": "Cover Me in Debris",
+    "description": "Get a full suit of Netherite armor"
+  },
+  "Country Lode, Take Me Home": {
+    "title": "Country Lode, Take Me Home",
+    "description": "Use a compass on a Lodestone"
+  },
+  "Who is Cutting Onions?": {
+    "title": "Who is Cutting Onions?",
+    "description": "Obtain Crying Obsidian"
+  },
+  "Not Quite \"Nine\" Lives": {
+    "title": "Not Quite \"Nine\" Lives",
+    "description": "Charge a Respawn Anchor to the maximum"
+  },
+  "This Boat Has Legs": {
+    "title": "This Boat Has Legs",
+    "description": "Ride a Strider with a Warped Fungus on a Stick"
+  },
+  "Hot Tourist Destinations": {
+    "title": "Hot Tourist Destinations",
+    "description": "Explore all Nether biomes"
+  },
+  "Those Were the Days": {
+    "title": "Those Were the Days",
+    "description": "Enter a Bastion Remnant"
+  },
+  "War Pigs": {
+    "title": "War Pigs",
+    "description": "Loot a chest in a Bastion Remnant"
+  },
+  "Oh Shiny": {
+    "title": "Oh Shiny",
+    "description": "Distract Piglins with gold"
+  },
+  "Zombie Doctor": {
+    "title": "Zombie Doctor",
+    "description": "Weaken and then cure a Zombie Villager"
+  },
+  "Not Today, Thank You": {
+    "title": "Not Today, Thank You",
+    "description": "Deflect a projectile with a shield"
+  },
+  "Enchanter": {
+    "title": "Enchanter",
+    "description": "Enchant an item at an Enchanting Table"
+  },
+  "The End?": {
+    "title": "The End?",
+    "description": "Enter the End Portal"
+  },
+  "We Need to Go Deeper": {
+    "title": "We Need to Go Deeper",
+    "description": "Build, light and enter a Nether Portal"
+  },
+  "Eye Spy": {
+    "title": "Eye Spy",
+    "description": "Follow an Eye of Ender"
+  },
+  "Ice Bucket Challenge": {
+    "title": "Ice Bucket Challenge",
+    "description": "Obtain a block of obsidian"
+  },
+  "Isn't It Iron Pick": {
+    "title": "Isn't It Iron Pick",
+    "description": "Upgrade your pickaxe"
+  },
+  "Hot Stuff": {
+    "title": "Hot Stuff",
+    "description": "Fill a bucket with lava"
+  },
+  "Diamonds!": {
+    "title": "Diamonds!",
+    "description": "Acquire diamonds"
+  },
+  "Stone Age": {
+    "title": "Stone Age",
+    "description": "Mine stone with your new pickaxe"
+  },
+  "Suit Up": {
+    "title": "Suit Up",
+    "description": "Protect yourself with a piece of iron armor"
+  },
+  "Minecraft": {
+    "title": "Minecraft",
+    "description": "The heart and story of the game"
+  },
+  "Cover Me with Diamonds": {
+    "title": "Cover Me with Diamonds",
+    "description": "Diamond armor saves lives"
+  },
+  "Acquire Hardware": {
+    "title": "Acquire Hardware",
+    "description": "Smelt an iron ingot"
+  },
+  "Getting an Upgrade": {
+    "title": "Getting an Upgrade",
+    "description": "Construct a better pickaxe"
+  }
+}

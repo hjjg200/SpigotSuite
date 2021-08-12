@@ -22,7 +22,9 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.MessageChannel;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.entities.Message.Attachment;
 
+import org.bukkit.ChatColor;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.server.BroadcastMessageEvent;
@@ -52,8 +54,17 @@ public final class DiscordPlugin extends AbstractPlugin {
                 if(!from.getId().equals(channelId)) return;
                 if(listener == null) return;
                 final Member member = e.getMember();
-                listener.accept(new Event(member.getEffectiveName(),
-                                message.getContentStripped()));
+                final String text = message.getContentStripped();
+
+                for(final Attachment each : message.getAttachments())
+                    listener.accept(new Event(member.getEffectiveName(),
+                        ChatColor.AQUA.toString()
+                        + ChatColor.UNDERLINE.toString()
+                        + each.getUrl()
+                        + ChatColor.RESET.toString()));
+                if(text.length() > 0)
+                    listener.accept(new Event(member.getEffectiveName(), text));
+                
                 break;
             }
         }
@@ -140,7 +151,9 @@ public final class DiscordPlugin extends AbstractPlugin {
         jda.getTextChannelById(id).sendMessage(message).queue();
     }
 
-    public final void sendMessage(final String name, final String message) {
+    public final void sendMessage(final String name, String message) {
+        message = ChatColor.stripColor(message); // ATM, no color handling for Discord
+
         final String n = name == null ? "" : "` " + name + " ` ";
         sendMessageToTextChannel(channelId, String.format("%s%s", n, message));
     }
