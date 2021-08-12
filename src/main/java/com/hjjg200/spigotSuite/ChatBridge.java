@@ -88,7 +88,7 @@ public final class ChatBridge implements Listener, Module {
         plugin.subscribeEvent(ev -> {
             String formatted = String.format(CHAT_NAME_FORMAT + "%s", ev.getDisplayName(),
                                             ev.getContent());
-            ignoreMap.put(formatted, null);
+            ignoreMap.put(ChatColor.stripColor(formatted), null);
             ss.getServer().broadcastMessage(formatted);
         });
         plugin.enable();
@@ -134,15 +134,15 @@ public final class ChatBridge implements Listener, Module {
         public void append(LogEvent e) {
             if(e.getLevel().equals(Level.INFO)) {
                 String message = e.getMessage().getFormattedMessage();
+                /*
+                1.16, 1.17 Advancement format
+                "%s has made the advancement [%s]"
+                */
                 if(message.contains("has made the advancement")) {
                     message = ChatColor.stripColor(message);
                     final String[] args = message.split(" ", 6);
                     for(final Player player : ss.getServer().getOnlinePlayers()) {
                         if(player.getDisplayName().equals(args[0])) {
-                            /*
-                            1.16, 1.17 Advancement format
-                            "%s has made the advancement [%s]"
-                             */
                             final String playerName = args[0];
                             final String advTitle = args[5].substring(1, args[5].length() - 1);
 
@@ -164,8 +164,9 @@ public final class ChatBridge implements Listener, Module {
     @EventHandler
     public void onBroadcastMessage(final BroadcastMessageEvent e) {
         final String message = e.getMessage();
-        if(ignoreMap.containsKey(message)) {
-            ignoreMap.remove(message);
+        final String message_alt = ChatColor.stripColor(message);
+        if(ignoreMap.containsKey(message_alt)) {
+            ignoreMap.remove(message_alt);
             return;
         }
 

@@ -57,11 +57,7 @@ public final class DiscordPlugin extends AbstractPlugin {
                 final String text = message.getContentStripped();
 
                 for(final Attachment each : message.getAttachments())
-                    listener.accept(new Event(member.getEffectiveName(),
-                        ChatColor.AQUA.toString()
-                        + ChatColor.UNDERLINE.toString()
-                        + each.getUrl()
-                        + ChatColor.RESET.toString()));
+                    listener.accept(new Event(member.getEffectiveName(), each.getFileName()));
                 if(text.length() > 0)
                     listener.accept(new Event(member.getEffectiveName(), text));
                 
