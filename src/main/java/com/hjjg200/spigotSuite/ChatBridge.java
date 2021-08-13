@@ -136,20 +136,40 @@ public final class ChatBridge implements Listener, Module {
                 String message = e.getMessage().getFormattedMessage();
                 /*
                 1.16, 1.17 Advancement format
-                "%s has made the advancement [%s]"
+                "chat.type.advancement.task": "%s has made the advancement %s",
+                "chat.type.advancement.challenge": "%s has completed the challenge %s",
+                "chat.type.advancement.goal": "%s has reached the goal %s",
                 */
-                if(message.contains("has made the advancement")) {
+                if(message.contains("has made the advancement")
+                    || message.contains("has completed the challenge")
+                    || message.contains("has reached the goal")) {
+                    
                     message = ChatColor.stripColor(message);
+                    // TODO: if any format happens to change, splitting to 6 parts won't work anymore
                     final String[] args = message.split(" ", 6);
+
+                    String fmtKey = "chat.type.advancement.task";
+                    switch(args[4]) {
+                    case "challenge":
+                        fmtKey = "chat.type.advancement.challenge";
+                        break;
+                    case "goal":
+                        fmtKey = "chat.type.advancement.goal";
+                        break;
+                    }
+
                     for(final Player player : ss.getServer().getOnlinePlayers()) {
                         if(player.getDisplayName().equals(args[0])) {
                             final String playerName = args[0];
                             final String advTitle = args[5].substring(1, args[5].length() - 1);
 
-                            final String advFmt = advancementMap.getString("chat.type.advancement.task");
+                            final String advFmt = advancementMap.getString(fmtKey);
                             if(advancementMap.has(advTitle)) {
                                 final JSONObject adv = advancementMap.getJSONObject(advTitle);
-                                message = String.format(advFmt, playerName, "[" + adv.getString("title") + "]");
+                                message = String.format(
+                                    advFmt,
+                                    playerName,
+                                    ChatColor.GREEN.toString() + "[" + adv.getString("title") + "]" + ChatColor.RESET.toString());
                                 message = message + " - " + adv.getString("description");
                             }
                             plugin.sendMessage(null, message);

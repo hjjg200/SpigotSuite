@@ -1,5 +1,7 @@
 {
   "chat.type.advancement.task": "%s has made the advancement %s",
+  "chat.type.advancement.challenge": "%s has completed the challenge %s",
+  "chat.type.advancement.goal": "%s has reached the goal %s",
   "Adventuring Time": {
     "title": "Adventuring Time",
     "description": "Discover every biome"

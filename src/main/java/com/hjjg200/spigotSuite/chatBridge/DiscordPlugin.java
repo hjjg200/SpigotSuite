@@ -7,6 +7,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.ArrayList;
 import java.io.Serializable;
+import java.util.function.UnaryOperator;
 
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
@@ -107,6 +108,105 @@ public final class DiscordPlugin extends AbstractPlugin {
         return PLUGIN_NAME;
     }
 
+    private final String translateColors(final String input) {
+        final String[] splits = input.split(String.valueOf(ChatColor.COLOR_CHAR));
+        String out = "";
+        boolean inColor = false;
+        boolean inItalic = false;
+        boolean inSt = false;
+        boolean inUl = false;
+
+        out = splits[0];
+
+        for(int i = 1; i < splits.length; i++) {
+            final String each = splits[i];
+            if(each.length() == 0)
+                continue;
+
+            switch(each.charAt(0)) {
+                      case '1': case '2': case '3':
+            case '4': case '5': case '6':
+                      case '9': case 'a': case 'b':
+            case 'c': case 'd': case 'e':
+            case 'l':
+                if(false == inColor) {
+                    inColor = true;
+                    out = out + "**";
+                }
+                break;
+
+            case '0': case '7': case '8': case 'f':
+                if(true == inColor) {
+                    inColor = false;
+                    out = out + "**";
+                }
+                break;
+
+            case 'o':
+                if(false == inItalic) {
+                    inItalic = true;
+                    out = out + "*";
+                }
+                break;
+
+            case 'm':
+                if(false == inSt) {
+                    inSt = true;
+                    out = out + "~~";
+                }
+                break;
+
+            case 'n':
+                if(false == inUl) {
+                    inUl = true;
+                    out = out + "__";
+                }
+                break;
+
+            case 'r':
+                if(true == inColor) {
+                    inColor = false;
+                    out = out + "**";
+                }
+                if(true == inItalic) {
+                    inItalic = false;
+                    out = out + "*";
+                }
+                if(true == inSt) {
+                    inSt = false;
+                    out = out + "~~";
+                }
+                if(true == inUl) {
+                    inUl = false;
+                    out = out + "__";
+                }
+                break;
+
+            }
+
+            out = out + each.substring(1, each.length());
+        }
+
+        // TODO: remove repetition
+        if(true == inColor) {
+            inColor = false;
+            out = out + "**";
+        }
+        if(true == inItalic) {
+            inItalic = false;
+            out = out + "*";
+        }
+        if(true == inSt) {
+            inSt = false;
+            out = out + "~~";
+        }
+        if(true == inUl) {
+            inUl = false;
+            out = out + "__";
+        }
+        return out;
+    }
+
     public DiscordPlugin(final ConfigurationSection config) {
         super(config);
     }
@@ -148,7 +248,7 @@ public final class DiscordPlugin extends AbstractPlugin {
     }
 
     public final void sendMessage(final String name, String message) {
-        message = ChatColor.stripColor(message); // ATM, no color handling for Discord
+        message = translateColors(message);
 
         final String n = name == null ? "" : "` " + name + " ` ";
         sendMessageToTextChannel(channelId, String.format("%s%s", n, message));

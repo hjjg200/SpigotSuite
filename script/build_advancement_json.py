@@ -24,9 +24,16 @@ if __name__ == "__main__":
 
     out_data = dict()
 
-    fmt_key = "chat.type.advancement.task"
-    out_data[fmt_key] = lc_data[fmt_key]
+    ## Fixed
+    fmt_keys = [
+        "chat.type.advancement.task",
+        "chat.type.advancement.challenge",
+        "chat.type.advancement.goal"
+    ]
+    for k in fmt_keys:
+        out_data[k] = lc_data[k]
 
+    ## Advancements
     for k in en_data:
         if not k.startswith("advancements"):
             continue
