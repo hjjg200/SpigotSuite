@@ -185,3 +185,34 @@ Leaderboard:
 
       type: KILL_ENTITY
       entityType: PIG # Refer to org.bukkit.entity.EntityType
+
+LoginBuff:
+
+  # Buff duration
+  #
+  # Duration greater than 1638 seconds(32766 ticks) are shown as **:**
+  # but it ticks down to zero eventually
+  #
+  # Unit: minutes
+  # Default: 60
+  duration: 60
+
+  # Reset hour
+  #
+  # Unit: hour (5.5 equals 5:30)
+  # Minimum: 0.0
+  # Maximum (exclusive): 24.0
+  # Default: 5
+  resetHour: 5
+
+  # Buff effects
+  #
+  # Refer to https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/potion/PotionEffectType.html
+  # for enum names
+  #
+  # Format: <BUFF_ENUM_NAME>: <BUFF_AMPLIFIER>
+  effects:
+    FAST_DIGGING: 1
+    LUCK: 1
+    NIGHT_VISION: 1
+
