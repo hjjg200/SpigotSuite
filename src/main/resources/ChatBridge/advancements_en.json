@@ -14,6 +14,10 @@
     "title": "Bullseye",
     "description": "Hit the bullseye of a Target block from at least 30 meters away"
   },
+  "Caves & Cliffs": {
+    "title": "Caves & Cliffs",
+    "description": "Free fall from the top of the world (build limit) to the bottom of the world and survive"
+  },
   "Light as a Rabbit": {
     "title": "Light as a Rabbit",
     "description": "Walk on powder snow...without sinking in it"
@@ -54,6 +58,10 @@
     "title": "Ol' Betsy",
     "description": "Shoot a crossbow"
   },
+  "Sound of Music": {
+    "title": "Sound of Music",
+    "description": "Make the Meadows come alive with the sound of music from a jukebox"
+  },
   "Adventure": {
     "title": "Adventure",
     "description": "Adventure, exploration and combat"
@@ -81,6 +89,10 @@
   "What a Deal!": {
     "title": "What a Deal!",
     "description": "Successfully trade with a Villager"
+  },
+  "Star Trader": {
+    "title": "Star Trader",
+    "description": "Trade with a villager at the build height limit"
   },
   "A Throwaway Joke": {
     "title": "A Throwaway Joke",
@@ -285,6 +297,10 @@
   "This Boat Has Legs": {
     "title": "This Boat Has Legs",
     "description": "Ride a Strider with a Warped Fungus on a Stick"
+  },
+  "Feels like home": {
+    "title": "Feels like home",
+    "description": "Take a Strider for a loooong ride on a lava lake in the Overworld"
   },
   "Hot Tourist Destinations": {
     "title": "Hot Tourist Destinations",

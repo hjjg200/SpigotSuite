@@ -1,1 +1,1 @@
-- [ ] Update advancement yml to the lastest version
+- [x] Update advancement yml to the lastest version
