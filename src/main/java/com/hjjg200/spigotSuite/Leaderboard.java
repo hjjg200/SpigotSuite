@@ -77,7 +77,11 @@ public final class Leaderboard implements Module {
                         list.add(T.valueOf(clazz, name));
                     }
                     if(list.size() == 0) {
-                        list = Arrays.asList(clazz.getEnumConstants());
+                        // https://stackoverflow.com/questions/43020075/java-util-arrays-aslist-when-used-with-removeif-throws-unsupportedoperationexcep
+                        // Wrap it with arraylist so that remove is
+                        // supported
+                        list = new ArrayList<>(Arrays.asList(clazz.getEnumConstants()));
+                        list.removeIf(e -> e.name().startsWith("LEGACY_"));
                     }
                 } else {
                     list = new ArrayList<T>();
