@@ -100,6 +100,21 @@ public final class LoginBuff implements Module, Listener {
     public final void disable() {
     }
 
+    private final LocalDateTime getLastReset() {
+        final int hrs = (int)resetHour;
+        final int mins = (int)((resetHour-(float)hrs) * 60.0);
+
+        final LocalDateTime now = LocalDateTime.now();
+        LocalDateTime lastReset = LocalDateTime.of(now.getYear(), now.getMonth(), now.getDayOfMonth(), hrs, mins);
+
+        if(now.compareTo(lastReset) < 0) {
+            // If last reset is in the future
+            // minus 1 day
+            lastReset = lastReset.minusDays(1);
+        }
+        return lastReset;
+    }
+
     private final void applyEffects(Player p) {
 
         if(p.isDead()) return;
@@ -136,11 +151,9 @@ public final class LoginBuff implements Module, Listener {
             // sqlite3 does not provide date type
             final LocalDateTime start = LocalDateTime.parse(rs1.getString("buff_start"));
             final LocalDateTime end = start.plus(effectMinutes, ChronoUnit.MINUTES);
-            final int hrs = (int)resetHour;
-            final int mins = (int)((resetHour-(float)hrs) * 60.0);
+            final LocalDateTime lastReset = getLastReset();
 
-            final LocalDateTime todayReset = LocalDateTime.of(now.getYear(), now.getMonth(), now.getDayOfMonth(), hrs, mins);
-            if(now.compareTo(todayReset) < 0 || start.compareTo(todayReset) > 0) {
+            if(now.compareTo(lastReset) < 0 || start.compareTo(lastReset) > 0) {
                 if(end.compareTo(now) < 0) {
                     conn.close();
                     return;
