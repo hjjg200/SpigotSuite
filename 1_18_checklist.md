@@ -1,1 +1,2 @@
+- [x] Update plugin.yml
 - [x] Update advancement yml to the lastest version
