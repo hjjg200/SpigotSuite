@@ -31,10 +31,10 @@ dependencies {
     implementation "net.dv8tion:JDA:4.2.0_168"
     implementation "org.json:json:20210307"
     implementation "org.xerial:sqlite-jdbc:3.36.0.3"
-    // Spigot 1.18
-    compileOnly 'org.spigotmc:spigot-api:1.18-R0.1-SNAPSHOT'
+    // Spigot 1.18.1
+    compileOnly 'org.spigotmc:spigot-api:1.18.1-R0.1-SNAPSHOT'
     // Use the CraftBukkit's shaded ones
-    // * CraftBukkit 1.18 uses log4j 2.14.1
+    // * CraftBukkit 1.18.1 uses log4j 2.14.1
     compileOnly "org.apache.logging.log4j:log4j-api:2.14.1"
     compileOnly "org.apache.logging.log4j:log4j-core:2.14.1"
     // Tests
