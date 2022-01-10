@@ -215,15 +215,16 @@ public final class InventoryGrave implements Module, Listener {
     private final static int[] getSearchedYs(final Location l) {
         final World w = l.getWorld();
         int y0 = (int)l.getY();
-        final int maxY = w.getMaxHeight() - 2;
+        final int maxY = w.getMaxHeight() - 2; // MaxHeight is exclusive, also deduct 1 for sign
+        final int minY = w.getMinHeight(); // MinHeight is inclusive
 
-        y0 = Math.max(0, y0);
+        y0 = Math.max(minY, y0);
         y0 = Math.min(maxY, y0);
 
-        int[] ret = new int[maxY + 1];
+        int[] ret = new int[maxY - minY + 1];
         int i = 0;
         for(int y = y0; y <= maxY; y++) ret[i++] = y;
-        for(int y = y0 - 1; y >= 0; y--) ret[i++] = y;
+        for(int y = y0 - 1; y >= minY; y--) ret[i++] = y;
 
         return ret;
     }
